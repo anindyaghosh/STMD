@@ -8,9 +8,6 @@ v = 5 # pix/timestep
 vf = np.zeros((100, 100))
 
 height = 5 # pix
-vf = np.zeros((100, 100))
-
-height = 5
 ylims = (vf.shape[0]-height) // 2 + np.arange(height)
 start = [ylims, 0]
 
