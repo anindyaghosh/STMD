@@ -1,3 +1,3 @@
 # STMD
 
-Recreating Nichols et al. (2018) paper in a rate-based way.
+Recreating Nichols et al. (2006) paper in a rate-based way.

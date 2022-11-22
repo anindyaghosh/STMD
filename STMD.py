@@ -13,7 +13,7 @@ t_sim = 100 # timesteps
 v = 20 # pix/timestep
 offset = 0
 num_neurons = 50
-height = 2 # pix
+height = 20 # pix
 
 vf = np.zeros((num_neurons, t_sim))
 ylims = (vf.shape[0]-height) // 2 + np.arange(height) + offset # offset in y_direction
@@ -67,7 +67,7 @@ class neuron_dynamics:
 x = neuron_dynamics(**pars_F)
 
 tol = 0.01
-rE = x.simulate(10, vf) # photoreceptor (P), P-E and P-I synaptic weights = 1
+rE = x.simulate(10, vf) # photoreceptor (P), P-E and P-I synaptic weights = 10
 rE[rE < tol] = 0
 
 rI = rE.copy()
