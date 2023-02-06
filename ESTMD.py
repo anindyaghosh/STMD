@@ -95,10 +95,10 @@ class ESTMD:
         self.INHIB_LPF_TAU = 2.0
         # Define 1D kernel
         self.INHIB_KERNEL = (2/25) * np.asarray([[-1, -1, -1, -1, -1],
-                                               [-1, -1, -1, -1, -1],
-                                               [-1, -1, 2, -1, -1],
-                                               [-1, -1, -1, -1, -1],
-                                               [-1, -1, -1, -1, -1]], dtype=float) # 0.2 * np.asarray([2.0, 1.0, 0.0, 1.0, 2.0])
+                                                 [-1, -1, -1, -1, -1],
+                                                 [-1, -1, 2, -1, -1],
+                                                 [-1, -1, -1, -1, -1],
+                                                 [-1, -1, -1, -1, -1]], dtype=float) # 0.2 * np.asarray([2.0, 1.0, 0.0, 1.0, 2.0])
         self.FDSR_TAU_FAST = 3.0
         self.FDSR_TAU_SLOW = 70.0
         self.DELAY_TAU = 25.0
@@ -118,7 +118,7 @@ class ESTMD:
             self.PULSE_WIDTH = 5 # Pulse width
             
             if self.RTC_TEST == 'HIGH':
-                INTERVAL = 50
+                INTERVAL = 10
             else:
                 # Interval between pulses
                 INTERVAL = 150
@@ -315,8 +315,10 @@ class ESTMD:
                     ["On Inhibition", "Off Inhibition"], 
                     fig_index=self.fig_index, title='Inhibition_plot_single')
         
-        # After inhibition
+        # After FDSR
         visualise([self.outs['on_f'] - self.outs['a_on'], self.outs['off_f'] - self.outs['a_off']], ["On FDSR", "Off FDSR"], title='FDSR')
+        
+        # After inhibition
         visualise([self.outs['on_f'] - self.outs['a_on'] + self.outs['on_conv_inhib'], 
                     self.outs['off_f'] - self.outs['a_off'] + self.outs['off_conv_inhib']], ["On after inhibition", "Off after inhibition"], 
                   title='After inhibition')
@@ -444,8 +446,8 @@ for i in ['HIGH', 'LOW']:
     for t in range(outs_.shape[0]):
         r.append(np.max(outs_[t,:,:]))
     ESTMD_model.figures_normalised([r], [f'{i}_pulse_{ESTMD_model.PULSE_WIDTH}_ms_width'])
-    # if i == 'HIGH':
-    #     ESTMD_model.visualisations()
+    if i == 'HIGH':
+        ESTMD_model.visualisations()
         
 # figures_normalised([outputs_h, outputs_v], ['Height (px)', 'Velocity (px/timestep)'])
 # ESTMD_model.visualisations()
