@@ -124,11 +124,10 @@ class ESTMD:
             
             if self.RTC_TEST == 'HIGH':
                 INTERVAL = 10
-                self.TIMESTEPS = 90
             else:
                 # Interval between pulses
                 INTERVAL = 30
-            # self.TIMESTEPS = (INTERVAL + self.PULSE_WIDTH) * 20 + 1 # Timestep to see adaptation
+            self.TIMESTEPS = (INTERVAL + self.PULSE_WIDTH) * 20 + 1 # Timestep to see adaptation
                 
             images = np.ones((self.TIMESTEPS, self.HEIGHT, self.WIDTH)) * 0.5
 
@@ -145,7 +144,6 @@ class ESTMD:
         else:
             self.save_folder = 'ESTMD'
             images = np.ones((self.TIMESTEPS, self.HEIGHT, self.WIDTH))
-
             for i in range(self.TIMESTEPS):
                 start_pos_x = i*self.VELOCITY
                 images[i,self.STIM_Y:self.STIM_Y+self.STIM_HEIGHT,start_pos_x:start_pos_x+self.STIM_WIDTH] = 0.0
@@ -348,29 +346,29 @@ class ESTMD:
         #             ["On FDSR", "Off FDSR"], 
         #             fig_index=self.fig_index, title='After FDSR_single')
         
-        # # After HW-R2 but before LPF5
-        # visualise([self.outs['a_on_rect'], self.outs['a_off_rect']], ["On_ON", "Off_OFF"], title='After HW-R before LP5')
-        # single_vis([self.outs['a_on_rect'], self.outs['a_off_rect']], ["On_ON", "Off_OFF"], fig_index=self.fig_index, 
-        #             title='After HW-R before LP5_single')
+        # After HW-R2 but before LPF5
+        visualise([self.outs['a_on_rect'], self.outs['a_off_rect']], ["On_ON", "Off_OFF"], title='After HW-R before LP5')
+        single_vis([self.outs['a_on_rect'], self.outs['a_off_rect']], ["On_ON", "Off_OFF"], fig_index=self.fig_index, 
+                    title='After HW-R before LP5_single')
         
-        # # After LPF5
-        # if not self.mode == 'RTC':
-        #     if self.obj_colour == 'black':
-        #         visualise([self.outs['a_on_rect'], self.off_filter], ["On_ON", "Off_OFF"], title='After LP5')
-        #         single_vis([self.outs['a_on_rect'], self.off_filter], ["On_ON", "Off_OFF"], fig_index=self.fig_index, 
-        #                     title=f'After LP5_single_{self.obj_colour}')
-        #     elif self.obj_colour == 'white':
-        #         visualise([self.on_filter, self.outs['a_off_rect']], ["On_ON", "Off_OFF"], title='After LP5')
-        #         single_vis([self.on_filter, self.outs['a_off_rect']], ["On_ON", "Off_OFF"], fig_index=self.fig_index, 
-        #                     title=f'After LP5_single_{self.obj_colour}')
-        # else:
-        #     visualise([self.outs['a_on_rect'], self.off_filter], ["On_ON", "Off_OFF"], title='After LP5_off_delayed')
-        #     single_vis([self.outs['a_on_rect'], self.off_filter], ["On_ON", "Off_OFF"], fig_index=self.fig_index, 
-        #                 title='After LP5_single_off_delayed')
+        # After LPF5
+        if not self.mode == 'RTC':
+            if self.obj_colour == 'black':
+                visualise([self.outs['a_on_rect'], self.off_filter], ["On_ON", "Off_OFF"], title='After LP5')
+                single_vis([self.outs['a_on_rect'], self.off_filter], ["On_ON", "Off_OFF"], fig_index=self.fig_index, 
+                            title=f'After LP5_single_{self.obj_colour}')
+            elif self.obj_colour == 'white':
+                visualise([self.on_filter, self.outs['a_off_rect']], ["On_ON", "Off_OFF"], title='After LP5')
+                single_vis([self.on_filter, self.outs['a_off_rect']], ["On_ON", "Off_OFF"], fig_index=self.fig_index, 
+                            title=f'After LP5_single_{self.obj_colour}')
+        else:
+            visualise([self.outs['a_on_rect'], self.off_filter], ["On_ON", "Off_OFF"], title='After LP5_off_delayed')
+            single_vis([self.outs['a_on_rect'], self.off_filter], ["On_ON", "Off_OFF"], fig_index=self.fig_index, 
+                        title='After LP5_single_off_delayed')
             
-        #     visualise([self.on_filter, self.outs['a_off_rect']], ["On_ON", "Off_OFF"], title='After LP5_on_delayed')
-        #     single_vis([self.on_filter, self.outs['a_off_rect']], ["On_ON", "Off_OFF"], fig_index=self.fig_index, 
-        #                 title='After LP5_single_on_delayed')
+            visualise([self.on_filter, self.outs['a_off_rect']], ["On_ON", "Off_OFF"], title='After LP5_on_delayed')
+            single_vis([self.on_filter, self.outs['a_off_rect']], ["On_ON", "Off_OFF"], fig_index=self.fig_index, 
+                        title='After LP5_single_on_delayed')
         
         # # Circuit output
         # visualise([self.outs['output'][:,:,:,0], self.outs['output'][:,:,:,1], self.outs['output'][:,:,:,2]], 
@@ -500,15 +498,15 @@ def normal_test():
                         STIM_HEIGHT=4, 
                         STIM_Y=4,
                         VELOCITY=1,
-                        MODE='RTC',
+                        MODE='ESTMD',
                         RTC_TEST='HIGH')
 
     ESTMD_model.model()
     ESTMD_model.visualisations()
 
 def tests():    
-    RTC_test()
-    # normal_test()
+    # RTC_test()
+    normal_test()
     # # height_test()
     # width_test()
     # velocity_test()
