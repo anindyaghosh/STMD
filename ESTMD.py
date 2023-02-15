@@ -4,6 +4,7 @@ Adapted from Jamie's code available at https://github.com/neworderofjamie/hover
 
 import cv2
 import matplotlib.pyplot as plt
+import matplotlib.ticker as ticker
 import numpy as np
 import os
 from scipy.stats import mode
@@ -35,6 +36,7 @@ def hide_axes(axis):
 # Helper function to save out images from different stages    
 def save_fig(title):
     save_out = os.path.join(os.getcwd(), 'figs', time.strftime("%Y_%m_%d"), save_folder)
+    # save_out = os.path.join(os.getcwd(), 'figs', 'test', save_folder)
     os.makedirs(save_out, exist_ok=True)
     
     plt.savefig(os.path.join(save_out, title))
@@ -51,6 +53,9 @@ def single_vis(vars, labels=None, **kwargs):
     
     if labels is not None:
         fig.legend(actors, labels, loc="lower center", ncol=len(labels), fontsize=25)
+        
+    ticks_x = ticker.FuncFormatter(lambda x, pos: '{0:g}'.format(x * DT))
+    axes.xaxis.set_major_formatter(ticks_x)
         
     save_fig(kwargs['title'])
     
@@ -79,6 +84,7 @@ class ESTMD:
         self.WIDTH = kwargs['WIDTH']
         self.HEIGHT = kwargs['HEIGHT']
         self.TIMESTEPS = kwargs['TIMESTEPS']
+        self.DT = 0.1
         
         # Size of stimuli, its y coordinate and its velocity 
         self.STIM_WIDTH = kwargs['STIM_WIDTH']
@@ -105,36 +111,39 @@ class ESTMD:
         self.HPF_TAU = 40.0
         self.INHIB_LPF_TAU = 2.0
         # Define 2D kernel
-        self.INH = 1
-        self.INHIB_KERNEL = self.INH * np.asarray([[1/9, 1/9, 1/9],
-                                                   [1/9, -2/9, 1/9],
-                                                   [1/9, 1/9, 1/9]], dtype=float) # 0.2 * np.asarray([2.0, 1.0, 0.0, 1.0, 2.0])
+        self.INH = 0
+        self.INHIB_KERNEL = self.INH * (1/9) * np.asarray([[1, 1, 1],
+                                                           [1, -2, 1],
+                                                           [1, 1, 1]], dtype=float) # 0.2 * np.asarray([2.0, 1.0, 0.0, 1.0, 2.0])
         
         # Define centre kernel
-        self.CENTRE_KERNEL = np.asarray([[0, 0, 0],
-                                         [0, 8, 0],
-                                         [0, 0, 0]], dtype=float)
+        self.CENTRE_KERNEL = (1/8) * np.asarray([[0, 0, 0],
+                                                 [0, 8/3, 0],
+                                                 [0, 0, 0]], dtype=float)
         
-        self.SURROUND_KERNEL = np.asarray([[1, 1, 1],
-                                           [1, 0, 1],
-                                           [1, 1, 1]], dtype=float)
+        self.SURROUND_KERNEL = (1/8) * np.asarray([[1, 1, 1],
+                                                   [1, 0, 1],
+                                                   [1, 1, 1]], dtype=float)
         
         self.FDSR_TAU_FAST = 1.0
         self.FDSR_TAU_SLOW = 100.0
         self.DELAY_TAU = 25.0
         
         # Decay terms
-        self.LIPETZ_LPF_K = np.exp(-1 / self.LIPETZ_LPF_TAU)
-        self.LPF_2_K = np.exp(-1 / self.LPF_2_TAU)
-        self.HPF_R_K = np.exp(-1 / self.HPF_R_TAU)
-        self.LPF_3_K = np.exp(-1 / self.LPF_3_TAU)
+        self.LIPETZ_LPF_K = np.exp((-1 * self.DT) / self.LIPETZ_LPF_TAU)
+        self.LPF_2_K = np.exp((-1 * self.DT) / self.LPF_2_TAU)
+        self.HPF_R_K = np.exp((-1 * self.DT) / self.HPF_R_TAU)
+        self.LPF_3_K = np.exp((-1 * self.DT) / self.LPF_3_TAU)
         
-        self.HPF_K = np.exp(-1 / self.HPF_TAU)
-        self.INHIB_LPF_K = np.exp(-1 / self.INHIB_LPF_TAU)
-        self.FDSR_K_FAST = np.exp(-1 / self.FDSR_TAU_FAST)
-        self.FDSR_K_SLOW = np.exp(-1 / self.FDSR_TAU_SLOW)
-        self.DELAY_K = np.exp(-1 / self.DELAY_TAU)
-        
+        self.HPF_K = np.exp((-1 * self.DT) / self.HPF_TAU)
+        self.INHIB_LPF_K = np.exp((-1 * self.DT) / self.INHIB_LPF_TAU)
+        self.FDSR_K_FAST = np.exp((-1 * self.DT) / self.FDSR_TAU_FAST)
+        self.FDSR_K_SLOW = np.exp((-1 * self.DT) / self.FDSR_TAU_SLOW)
+        self.DELAY_K = np.exp((-1 * self.DT) / self.DELAY_TAU)
+    
+    def temporal_resolution(self):
+        self.TIMESTEPS = int(self.TIMESTEPS / self.DT)
+    
     def image_generation(self):
         # Generate TIMESTEPS long 'video' of stimuli moving across frame
         if self.mode == 'RTC' and self.RTC_TEST is not None:
@@ -149,22 +158,23 @@ class ESTMD:
                 INTERVAL = 30
             self.time_pad = 2000
             self.TIMESTEPS = (INTERVAL + self.PULSE_WIDTH) * 20 + self.time_pad # Timestep to see adaptation
-            # self.TIMESTEPS = 120 + self.time_pad
+            # self.TIMESTEPS = 25 + self.time_pad
                 
             images = np.ones((self.TIMESTEPS-self.time_pad, self.HEIGHT, self.WIDTH))
 
-            for i in range(self.TIMESTEPS-self.time_pad):
+            for i in range(self.TIMESTEPS-self.time_pad-1):
                 if i <= (self.TIMESTEPS-self.time_pad) / 2:
                     if not i % (self.PULSE_WIDTH + INTERVAL):
                         for k in range(self.PULSE_WIDTH):
-                            images[i+k,:,:] = 2.0
+                            images[i+k+1,:,:] = 2.0
                 else:
                     if not i % (self.PULSE_WIDTH + INTERVAL):
                         for k in range(self.PULSE_WIDTH):
-                            images[i+k,:,:] = 0.5
+                            images[i+k+1,:,:] = 0.5
                             # images[i+k,self.STIM_Y:self.STIM_Y+self.STIM_HEIGHT,self.STIM_Y:self.STIM_Y+self.STIM_WIDTH] = 0.0
-                            
+            
             images = np.concatenate((np.ones((self.time_pad, self.HEIGHT, self.WIDTH)), images), axis=0)
+            images = np.repeat(images, (1/self.DT), axis=0)
         else:
             self.save_folder = 'ESTMD'
             images = 2 * np.ones((self.TIMESTEPS, self.HEIGHT, self.WIDTH))
@@ -176,8 +186,8 @@ class ESTMD:
                 pass
             else:
                 images = 2 * np.ones(images.shape) - images
-        global save_folder
-        save_folder = self.save_folder
+        global save_folder, DT
+        save_folder, DT = self.save_folder, self.DT
             
         return images
     
@@ -206,6 +216,7 @@ class ESTMD:
         
     def model(self):
         images = self.image_generation()
+        self.temporal_resolution()
         
         # Initialisations
         sf = np.zeros((self.TIMESTEPS, self.HEIGHT, self.WIDTH))
@@ -271,7 +282,7 @@ class ESTMD:
             
             # Relaxed high pass filters 
             hpf_r_c[t] = (((1.0 - self.HPF_R_K) * hpf_r_c[t - 1]) + ((1.0 - self.HPF_R_K) * (lpf_f_c[t] - lpf_f_c[t - 1]))) \
-                + 0.1 * (self.HPF_R_K * hpf_r_c[t - 1]) + ((1.0 - self.HPF_R_K) * lpf_f_c[t])
+                + (self.HPF_R_K * hpf_r_c[t - 1]) + 0.3 * ((1.0 - self.HPF_R_K) * lpf_f_c[t])
             
             # -------------------------------------------------------------------
             
@@ -287,7 +298,7 @@ class ESTMD:
             
             # Relaxed high pass filters 
             hpf_r_s[t] = (((1.0 - self.HPF_R_K) * hpf_r_s[t - 1]) + ((1.0 - self.HPF_R_K) * (lpf_f_s[t] - lpf_f_s[t - 1]))) \
-                + 0.1 * (self.HPF_R_K * hpf_r_s[t - 1]) + ((1.0 - self.HPF_R_K) * lpf_f_s[t])
+                + (self.HPF_R_K * hpf_r_s[t - 1]) + 0.3 * ((1.0 - self.HPF_R_K) * lpf_f_s[t])
                 
             lpf_hpf[t] = (self.LPF_3_K * lpf_hpf[t - 1]) + ((1.0 - self.LPF_3_K) * hpf_r_s[t])
                 
@@ -323,8 +334,8 @@ class ESTMD:
             # ‘adaptation state’ which then subtractively inhibits the unaltered pass-through signal"
             
             # Depending on instantaneous temporal gradients, pick K values for each pixel at each timestep
-            k_on = np.where((on_f[t,:,:] - on_f[t - 1,:,:]) >= 0.0, self.FDSR_K_FAST, self.FDSR_K_SLOW)
-            k_off = np.where((off_f[t,:,:] - off_f[t - 1,:,:]) >= 0.0, self.FDSR_K_FAST, self.FDSR_K_SLOW)
+            k_on = np.where((on_f[t,:,:] - on_f[t - 1,:,:]) > 0.0, self.FDSR_K_FAST, self.FDSR_K_SLOW)
+            k_off = np.where((off_f[t,:,:] - off_f[t - 1,:,:]) > 0.0, self.FDSR_K_FAST, self.FDSR_K_SLOW)
             # Doesn't match Weiderman paper but is the only thing that makes sense
             
             # Apply low-pass filters to on and off channels
@@ -363,7 +374,7 @@ class ESTMD:
                      'on_conv_inhib':on_conv_inhib, 'off_conv_inhib':off_conv_inhib, 'a_on':a_on, 'a_off':a_off, 
                      'a_on_rect':a_on_rect, 'a_off_rect':a_off_rect, 'output':output}
         
-        self.time_prepend = self.time_pad - 5
+        self.time_prepend = int(self.time_pad/self.DT)
         
         return self.outs
 
@@ -374,44 +385,44 @@ class ESTMD:
         # visualise([self.outs['sf']], title='sf')
         single_vis([self.outs['sf']], fig_index=self.fig_index, title='sf_single')
         
-        # visualise([self.outs['lipetz_lpf_c']], title='lipetz_lpf_c')
+        # # visualise([self.outs['lipetz_lpf_c']], title='lipetz_lpf_c')
         single_vis([self.outs['lipetz_lpf_c']], fig_index=self.fig_index, title='lipetz_lpf_c_single')
         
-        # visualise([self.outs['lpf_f_c']], title='LPF_C')
+        # # visualise([self.outs['lpf_f_c']], title='LPF_C')
         single_vis([self.outs['lpf_f_c']], fig_index=self.fig_index, title='LPF_c_single')
         
-        # visualise([self.outs['hpf_r_c']], title='HPF_r_c')
+        # # visualise([self.outs['hpf_r_c']], title='HPF_r_c')
         single_vis([self.outs['hpf_r_c']], fig_index=self.fig_index, title='HPF_r_c_single')
         
-        # visualise([self.outs['lpf_hpf']], title='LPF_HPF')
+        # # visualise([self.outs['lpf_hpf']], title='LPF_HPF')
         single_vis([self.outs['lpf_hpf']], fig_index=self.fig_index, title='LPF_HPF_single')
         
-        # visualise([self.outs['LMC']], title='LMC')
+        # # visualise([self.outs['LMC']], title='LMC')
         single_vis([self.outs['LMC']], fig_index=self.fig_index, title='LMC_single')
         
-        # visualise([self.outs['LMC_invert']], title='LMC_invert')
+        # # visualise([self.outs['LMC_invert']], title='LMC_invert')
         single_vis([self.outs['LMC_invert']], fig_index=self.fig_index, title='LMC_invert_single')
         
-        # visualise([self.outs['hpf']], title='HP3')
+        # # visualise([self.outs['hpf']], title='HP3')
         single_vis([self.outs['hpf']], fig_index=self.fig_index, title='HP3_single')
         
-        # Visualize stimuli
-        images = self.image_generation()
-        images = images[self.time_prepend:,:,:]
-        fig, axes = plt.subplots(1,images.shape[0], sharey=True, figsize=(15,5))
-        for t, a in enumerate(axes):
-            a.imshow(images[t,:,:], cmap="gray", vmin=0.0, vmax=2.0)
-            hide_axes(a)
-        fig.tight_layout(pad=0)
-        save_fig('stimuli.png')
+        # # Visualize stimuli
+        # images = self.image_generation()
+        # images = images[self.time_prepend::int(1/self.DT),:,:]
+        # fig, axes = plt.subplots(1,images.shape[0], sharey=True, figsize=(15,5))
+        # for t, a in enumerate(axes):
+        #     a.imshow(images[t,:,:], cmap="gray", vmin=0.0, vmax=2.0)
+        #     hide_axes(a)
+        # fig.tight_layout(pad=0)
+        # save_fig('stimuli.png')
         # imshow_single_vis([images[self.fig_index[1],:,:]], title='stimuli_single.png')
         
-        # After HPF3
-        # visualise([self.outs['on_f'], self.outs['off_f']], ["On", "Off"], title='HW-R after HPF3')
+        # # After HPF3
+        # # visualise([self.outs['on_f'], self.outs['off_f']], ["On", "Off"], title='HW-R after HPF3')
         single_vis([self.outs['on_f'], self.outs['off_f']], ["On", "Off"], fig_index=self.fig_index, title='HW-R after HPF3_single')
         
-        # # LP4
-        # visualise([self.outs['on_inhib_lpf'], self.outs['off_inhib_lpf']], ["On LPF", "Off LPF"], title='LP4')
+        # # # LP4
+        # # visualise([self.outs['on_inhib_lpf'], self.outs['off_inhib_lpf']], ["On LPF", "Off LPF"], title='LP4')
         single_vis([self.outs['on_inhib_lpf'], self.outs['off_inhib_lpf']], ["On LPF", "Off LPF"], fig_index=self.fig_index, title='LP4_single')
         
         # # Inhibition
@@ -446,17 +457,17 @@ class ESTMD:
         #             self.outs['off_f'] - self.outs['a_off'] - self.outs['off_inhib_lpf']], ["On after inhibition", "Off after inhibition"], 
         #           title='After inhibition')
         
-        single_vis([self.outs['on_f'] - self.outs['a_on'] - self.outs['on_inhib_lpf'], 
-                    self.outs['off_f'] - self.outs['a_off'] - self.outs['off_inhib_lpf']], 
-                    ["On after inhibition", "Off after inhibition"], 
-                    fig_index=self.fig_index, title='After inhibition_single')
+        # single_vis([self.outs['on_f'] - self.outs['a_on'] - self.outs['on_inhib_lpf'], 
+        #             self.outs['off_f'] - self.outs['a_off'] - self.outs['off_inhib_lpf']], 
+        #             ["On after inhibition", "Off after inhibition"], 
+        #             fig_index=self.fig_index, title='After inhibition_single')
         
         single_vis([self.outs['a_on'], self.outs['a_off']], 
                     ["On FDSR", "Off FDSR"], 
                     fig_index=self.fig_index, title='FDSR_single')
         
         single_vis([self.outs['on_f'] - self.outs['a_on'], self.outs['off_f'] - self.outs['a_off']], 
-                    ["On FDSR", "Off FDSR"], 
+                    ["On", "Off"], 
                     fig_index=self.fig_index, title='After FDSR_single')
         
         # # After HW-R2 but before LPF5
@@ -464,24 +475,24 @@ class ESTMD:
         single_vis([self.outs['a_on_rect'], self.outs['a_off_rect']], ["On_ON", "Off_OFF"], fig_index=self.fig_index, 
                     title='After HW-R before LP5_single')
         
-        # After LPF5
-        if not self.mode == 'RTC':
-            if self.obj_colour == 'black':
-                visualise([self.outs['a_on_rect'], self.off_filter], ["On_ON", "Off_OFF"], title='After LP5')
-                single_vis([self.outs['a_on_rect'], self.off_filter], ["On_ON", "Off_OFF"], fig_index=self.fig_index, 
-                            title=f'After LP5_single_{self.obj_colour}')
-            elif self.obj_colour == 'white':
-                visualise([self.on_filter, self.outs['a_off_rect']], ["On_ON", "Off_OFF"], title='After LP5')
-                single_vis([self.on_filter, self.outs['a_off_rect']], ["On_ON", "Off_OFF"], fig_index=self.fig_index, 
-                            title=f'After LP5_single_{self.obj_colour}')
-        else:
-            # visualise([self.outs['a_on_rect'], self.off_filter], ["ON", "OFF"], title='After LP5_off_delayed')
-            single_vis([self.outs['a_on_rect'], self.off_filter[self.time_prepend:,:,:]], ["ON", "OFF"], fig_index=self.fig_index, 
-                        title='After LP5_single_off_delayed')
+        # # After LPF5
+        # if not self.mode == 'RTC':
+        #     if self.obj_colour == 'black':
+        #         visualise([self.outs['a_on_rect'], self.off_filter], ["On_ON", "Off_OFF"], title='After LP5')
+        #         single_vis([self.outs['a_on_rect'], self.off_filter], ["On_ON", "Off_OFF"], fig_index=self.fig_index, 
+        #                     title=f'After LP5_single_{self.obj_colour}')
+        #     elif self.obj_colour == 'white':
+        #         visualise([self.on_filter, self.outs['a_off_rect']], ["On_ON", "Off_OFF"], title='After LP5')
+        #         single_vis([self.on_filter, self.outs['a_off_rect']], ["On_ON", "Off_OFF"], fig_index=self.fig_index, 
+        #                     title=f'After LP5_single_{self.obj_colour}')
+        # else:
+        #     # visualise([self.outs['a_on_rect'], self.off_filter], ["ON", "OFF"], title='After LP5_off_delayed')
+        #     single_vis([self.outs['a_on_rect'], self.off_filter[self.time_prepend:,:,:]], ["ON", "OFF"], fig_index=self.fig_index, 
+        #                 title='After LP5_single_off_delayed')
             
-            # visualise([self.on_filter, self.outs['a_off_rect']], ["ON", "OFF"], title='After LP5_on_delayed')
-            single_vis([self.on_filter[self.time_prepend:,:,:], self.outs['a_off_rect']], ["ON", "OFF"], fig_index=self.fig_index, 
-                        title='After LP5_single_on_delayed')
+        #     # visualise([self.on_filter, self.outs['a_off_rect']], ["ON", "OFF"], title='After LP5_on_delayed')
+        #     single_vis([self.on_filter[self.time_prepend:,:,:], self.outs['a_off_rect']], ["ON", "OFF"], fig_index=self.fig_index, 
+        #                 title='After LP5_single_on_delayed')
         
         # # Circuit output
         # visualise([self.outs['output'][:,:,:,0], self.outs['output'][:,:,:,1], self.outs['output'][:,:,:,2]], 
@@ -520,6 +531,8 @@ class ESTMD:
             v /= np.max(v)
             fig, axes = plt.subplots()
             plt.plot(v)
+            ticks_x = ticker.FuncFormatter(lambda x, pos: '{0:g}'.format(x * self.DT))
+            axes.xaxis.set_major_formatter(ticks_x)
             if labels is not None:
                 axes.set_xlabel(labels[i])
             save_fig(labels[i].split(' ',1)[0])
@@ -597,9 +610,9 @@ def RTC_test():
         r = []
         for t in range(outs_.shape[0]):
             r.append(np.max(outs_[t,:,:]))
-        ESTMD_model.figures_normalised([r], [f'{i}_pulse_{ESTMD_model.PULSE_WIDTH}_ms_width'])
+        # ESTMD_model.figures_normalised([r], [f'{i}_pulse_{ESTMD_model.PULSE_WIDTH}_ms_width'])
         ESTMD_model.figures_normalised([r[ESTMD_model.time_prepend:]], [f'{i}_pulse_{ESTMD_model.PULSE_WIDTH}_ms_width_{ESTMD_model.time_pad}'])
-        if i == 'HIGH':
+        if i == 'LOW':
             ESTMD_model.visualisations()
             
 def normal_test():
