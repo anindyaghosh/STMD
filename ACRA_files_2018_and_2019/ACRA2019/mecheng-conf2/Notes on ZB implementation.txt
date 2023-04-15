@@ -1,0 +1,17 @@
+RHC for two directions: left/right, positive/negative
+In both cases the same LPF version of the ESTMD outputs is used (after facilitation applied)
+
+Threshold of 0.1 on the ESTMD-EMD outputs used for determining whether to predict target future location or not
+
+Prediction of 3 degrees movement (left/right/up/down) in that facilitation is applied with 3 degree offset to location of maximum ESTMD output
+
+Direction determined with max(EMD outputs) + min(EMD outputs)
+
+During rotations, the facilitation gets applied to column 51 (if rotating to the right) or column 41 (if rotating to the left). The row to which facilitation is applied is always max_location + [-3 0 3] depending on whether the up/down direction max 
+
+A turn is triggered when the max location is > 51 or < 41 and the direction matches
+i.e. col > 51 && direction = right
+
+Vertical direction only influences where the facilitation mask is positioned
+
+Instantly rotates to center the target

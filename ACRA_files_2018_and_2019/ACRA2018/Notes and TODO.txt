@@ -1,0 +1,25 @@
+18_09_09:
+The apparent velocity results were binned irrespective of the apparent size
+What's needed now is a 2-D binning with velocity and apparent size
+
+This means re-running analysis scripts on Phoenix
+
+##
+
+*ProcessDroneVideo18_06_22.m was used to generate maxlocs
+
+*DroneFootagePerf18_06_29.m was used to calculate number of successes
+
+*AnalyseDroneSegments18_07_04.m was used to generate output figures
+
+A) Key differences between desired conference version and previous are:
+	A.1) Instead of the blur being defined in terms of photoreceptor spacing, define in pixels (DONE)
+	A.2) Centre-surround kernel to have constant gain (DONE)
+	A.3) Need to record the target response even if it's not one of the max locations (DONE)
+	A.4) Run with parameters that were suitable for the 0.01 target mask threshold (DONE)
+	A.5) Record the distribution of background values even in an approximate way (i.e. maybe 1000 bins with some constant threshold spacing, 0-0.01 to fall into a single bin). (DONE)
+	A.6) Combination of light and dark channels (DONE)
+
+B) Need to fix up the group sheet for one of the input videos as it had too many parts (DONE)
+
+TODO:	Update ProcessDroneVideo

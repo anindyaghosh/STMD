@@ -105,35 +105,37 @@ class ESTMD:
         self.HPF_TAU = 40.0
         self.INHIB_LPF_TAU = 2.0
         # Define 2D kernel
-        self.INH = 1
-        self.INHIB_KERNEL = self.INH * np.asarray([[1/9, 1/9, 1/9],
-                                                   [1/9, -2/9, 1/9],
-                                                   [1/9, 1/9, 1/9]], dtype=float) # 0.2 * np.asarray([2.0, 1.0, 0.0, 1.0, 2.0])
+        self.INH = 0.2
+        self.INHIB_KERNEL = self.INH * np.asarray([[-1, -1, -1, -1, -1],
+                                                   [-1, 0, 0, 0, -1],
+                                                   [-1, 0, 2, 0, -1],
+                                                   [-1, 0, 0, 0, -1],
+                                                   [-1, -1, -1, -1, -1]], dtype=float) # 0.2 * np.asarray([2.0, 1.0, 0.0, 1.0, 2.0])
         
         # Define centre kernel
         self.CENTRE_KERNEL = np.asarray([[0, 0, 0],
                                          [0, 8, 0],
-                                         [0, 0, 0]], dtype=float)
+                                         [0, 0, 0]], dtype=float) * 1/9
         
         self.SURROUND_KERNEL = np.asarray([[1, 1, 1],
                                            [1, 0, 1],
-                                           [1, 1, 1]], dtype=float)
+                                           [1, 1, 1]], dtype=float) * 1/9
         
         self.FDSR_TAU_FAST = 1.0
         self.FDSR_TAU_SLOW = 100.0
         self.DELAY_TAU = 25.0
         
         # Decay terms
-        self.LIPETZ_LPF_K = np.exp(-1 / self.LIPETZ_LPF_TAU)
-        self.LPF_2_K = np.exp(-1 / self.LPF_2_TAU)
-        self.HPF_R_K = np.exp(-1 / self.HPF_R_TAU)
-        self.LPF_3_K = np.exp(-1 / self.LPF_3_TAU)
+        self.LIPETZ_LPF_K = 1 - np.exp(-1 / self.LIPETZ_LPF_TAU)
+        self.LPF_2_K = 1 - np.exp(-1 / self.LPF_2_TAU)
+        self.HPF_R_K = 1- np.exp(-1 / self.HPF_R_TAU)
+        self.LPF_3_K = 1 - np.exp(-1 / self.LPF_3_TAU)
         
-        self.HPF_K = np.exp(-1 / self.HPF_TAU)
-        self.INHIB_LPF_K = np.exp(-1 / self.INHIB_LPF_TAU)
-        self.FDSR_K_FAST = np.exp(-1 / self.FDSR_TAU_FAST)
-        self.FDSR_K_SLOW = np.exp(-1 / self.FDSR_TAU_SLOW)
-        self.DELAY_K = np.exp(-1 / self.DELAY_TAU)
+        self.HPF_K = 1 - np.exp(-1 / self.HPF_TAU)
+        self.INHIB_LPF_K = 1 - np.exp(-1 / self.INHIB_LPF_TAU)
+        self.FDSR_K_FAST = 1 - np.exp(-1 / self.FDSR_TAU_FAST)
+        self.FDSR_K_SLOW = 1 - np.exp(-1 / self.FDSR_TAU_SLOW)
+        self.DELAY_K = 1 - np.exp(-1 / self.DELAY_TAU)
         
     def image_generation(self):
         # Generate TIMESTEPS long 'video' of stimuli moving across frame
@@ -151,17 +153,17 @@ class ESTMD:
             self.TIMESTEPS = (INTERVAL + self.PULSE_WIDTH) * 20 + self.time_pad # Timestep to see adaptation
             # self.TIMESTEPS = 120 + self.time_pad
                 
-            images = np.ones((self.TIMESTEPS-self.time_pad, self.HEIGHT, self.WIDTH))
+            images = np.ones((self.TIMESTEPS-self.time_pad, self.HEIGHT, self.WIDTH)) * 0.5
 
             for i in range(self.TIMESTEPS-self.time_pad):
                 if i <= (self.TIMESTEPS-self.time_pad) / 2:
                     if not i % (self.PULSE_WIDTH + INTERVAL):
                         for k in range(self.PULSE_WIDTH):
-                            images[i+k,:,:] = 2.0
+                            images[i+k,:,:] = 1.0
                 else:
                     if not i % (self.PULSE_WIDTH + INTERVAL):
                         for k in range(self.PULSE_WIDTH):
-                            images[i+k,:,:] = 0.5
+                            images[i+k,:,:] = 0.25
                             # images[i+k,self.STIM_Y:self.STIM_Y+self.STIM_HEIGHT,self.STIM_Y:self.STIM_Y+self.STIM_WIDTH] = 0.0
                             
             images = np.concatenate((np.ones((self.time_pad, self.HEIGHT, self.WIDTH)), images), axis=0)
@@ -170,7 +172,7 @@ class ESTMD:
             images = 2 * np.ones((self.TIMESTEPS, self.HEIGHT, self.WIDTH))
             for i in range(self.TIMESTEPS):
                 start_pos_x = i*self.VELOCITY
-                images[i,self.STIM_Y:self.STIM_Y+self.STIM_HEIGHT,start_pos_x:start_pos_x+self.STIM_WIDTH] = 0.0
+                images[i,self.STIM_Y:self.STIM_Y+self.STIM_HEIGHT,start_pos_x:start_pos_x+self.STIM_WIDTH] = 0.5
                 
             if self.obj_colour == 'black': # black-on-white
                 pass
@@ -211,12 +213,12 @@ class ESTMD:
         sf = np.zeros((self.TIMESTEPS, self.HEIGHT, self.WIDTH))
         
         centre_f = np.zeros((self.TIMESTEPS, self.HEIGHT, self.WIDTH))
-        lipetz_lpf_c = np.ones((self.TIMESTEPS, self.HEIGHT, self.WIDTH))
+        lipetz_lpf_c = np.zeros((self.TIMESTEPS, self.HEIGHT, self.WIDTH))
         lpf_f_c = np.zeros((self.TIMESTEPS, self.HEIGHT, self.WIDTH))
         hpf_r_c = np.zeros((self.TIMESTEPS, self.HEIGHT, self.WIDTH))
         
         surround_f = np.zeros((self.TIMESTEPS, self.HEIGHT, self.WIDTH))
-        lipetz_lpf_s = np.ones((self.TIMESTEPS, self.HEIGHT, self.WIDTH))
+        lipetz_lpf_s = np.zeros((self.TIMESTEPS, self.HEIGHT, self.WIDTH))
         lpf_f_s = np.zeros((self.TIMESTEPS, self.HEIGHT, self.WIDTH))
         hpf_r_s = np.zeros((self.TIMESTEPS, self.HEIGHT, self.WIDTH))
         
@@ -252,12 +254,14 @@ class ESTMD:
         consts = {'a':1.0, 'b':1.0, 'c':1.0}
         consts = self.model_mode(consts)
         
-        sigma = 16 / (2 * np.sqrt(2 * np.log(2)))
+        sigma = 1.4 / (2 * np.sqrt(2 * np.log(2)))
+        sigma_pixel = sigma * pixels_per_degree # sigma_pixel = (sigma in degrees (0.59))*pixels_per_degree
+        kernel_size = int(np.ceil(2 * sigma_pixel))
         
         for t in range(1, self.TIMESTEPS):
             # Photoreceptors
             # Spatial filtering with Gaussian kernel
-            sf[t] = cv2.GaussianBlur(images[t], (5, 5), sigma)
+            sf[t] = cv2.GaussianBlur(images[t], (kernel_size, kernel_size), sigma)
             
             # Centre kernel
             centre_f[t] = cv2.filter2D(sf[t], -1, self.CENTRE_KERNEL)
@@ -271,7 +275,7 @@ class ESTMD:
             
             # Relaxed high pass filters 
             hpf_r_c[t] = (((1.0 - self.HPF_R_K) * hpf_r_c[t - 1]) + ((1.0 - self.HPF_R_K) * (lpf_f_c[t] - lpf_f_c[t - 1]))) \
-                + 0.1 * (self.HPF_R_K * hpf_r_c[t - 1]) + ((1.0 - self.HPF_R_K) * lpf_f_c[t])
+                + (self.HPF_R_K * hpf_r_c[t - 1]) + 0.1 * ((1.0 - self.HPF_R_K) * lpf_f_c[t])
             
             # -------------------------------------------------------------------
             
@@ -287,7 +291,7 @@ class ESTMD:
             
             # Relaxed high pass filters 
             hpf_r_s[t] = (((1.0 - self.HPF_R_K) * hpf_r_s[t - 1]) + ((1.0 - self.HPF_R_K) * (lpf_f_s[t] - lpf_f_s[t - 1]))) \
-                + 0.1 * (self.HPF_R_K * hpf_r_s[t - 1]) + ((1.0 - self.HPF_R_K) * lpf_f_s[t])
+                + (self.HPF_R_K * hpf_r_s[t - 1]) + 0.1 * ((1.0 - self.HPF_R_K) * lpf_f_s[t])
                 
             lpf_hpf[t] = (self.LPF_3_K * lpf_hpf[t - 1]) + ((1.0 - self.LPF_3_K) * hpf_r_s[t])
                 
@@ -323,8 +327,8 @@ class ESTMD:
             # ‘adaptation state’ which then subtractively inhibits the unaltered pass-through signal"
             
             # Depending on instantaneous temporal gradients, pick K values for each pixel at each timestep
-            k_on = np.where((on_f[t,:,:] - on_f[t - 1,:,:]) >= 0.0, self.FDSR_K_FAST, self.FDSR_K_SLOW)
-            k_off = np.where((off_f[t,:,:] - off_f[t - 1,:,:]) >= 0.0, self.FDSR_K_FAST, self.FDSR_K_SLOW)
+            k_on = np.where((on_f[t,:,:] - on_f[t - 1,:,:]) > 0.0, self.FDSR_K_FAST, self.FDSR_K_SLOW)
+            k_off = np.where((off_f[t,:,:] - off_f[t - 1,:,:]) > 0.0, self.FDSR_K_FAST, self.FDSR_K_SLOW)
             # Doesn't match Weiderman paper but is the only thing that makes sense
             
             # Apply low-pass filters to on and off channels
@@ -332,8 +336,8 @@ class ESTMD:
             a_off[t] = ((1.0 - k_off) * off_f[t]) + (k_off * a_off[t - 1]) 
             
             # Half-wave rectification
-            a_on_rect[t] = np.maximum(0.0, on_f[t] - a_on[t] - on_inhib_lpf[t]) # ON of on
-            a_off_rect[t] = np.maximum(0.0, off_f[t] - a_off[t] - off_inhib_lpf[t]) # ON of off
+            a_on_rect[t] = np.maximum(0.0, on_f[t] - a_on[t] + on_inhib_lpf[t]) # ON of on
+            a_off_rect[t] = np.maximum(0.0, off_f[t] - a_off[t] + off_inhib_lpf[t]) # ON of off
             
             # Correlate (multiply) low-pass filtered off channel with on channel
             # if self.obj_colour == 'black':
@@ -446,8 +450,8 @@ class ESTMD:
         #             self.outs['off_f'] - self.outs['a_off'] - self.outs['off_inhib_lpf']], ["On after inhibition", "Off after inhibition"], 
         #           title='After inhibition')
         
-        single_vis([self.outs['on_f'] - self.outs['a_on'] - self.outs['on_inhib_lpf'], 
-                    self.outs['off_f'] - self.outs['a_off'] - self.outs['off_inhib_lpf']], 
+        single_vis([self.outs['on_f'] - self.outs['a_on'] + self.outs['on_inhib_lpf'], 
+                    self.outs['off_f'] - self.outs['a_off'] + self.outs['off_inhib_lpf']], 
                     ["On after inhibition", "Off after inhibition"], 
                     fig_index=self.fig_index, title='After inhibition_single')
         
@@ -523,6 +527,8 @@ class ESTMD:
             if labels is not None:
                 axes.set_xlabel(labels[i])
             save_fig(labels[i].split(' ',1)[0])
+
+pixels_per_degree = 4
 
 def height_test():
     outputs = []
@@ -605,8 +611,8 @@ def RTC_test():
 def normal_test():
     ESTMD_model = ESTMD('black', 
                         OMMATIDIA_COL=7, 
-                        WIDTH=25, 
-                        HEIGHT=25, 
+                        WIDTH=5 * pixels_per_degree, 
+                        HEIGHT=5 * pixels_per_degree, 
                         TIMESTEPS=25, # Each timestep is 1 ms
                         STIM_WIDTH=4, 
                         STIM_HEIGHT=4, 
