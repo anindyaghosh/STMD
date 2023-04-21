@@ -12,7 +12,7 @@
 
 %%%%%%%%%%% path to the videos %%%%%%%%%%%%
 L=26; %video number
-video_path=['C:\Dataset\' num2str(L)];
+video_path=['C:\Users\ag803\STMD\4496768\STNS1\' num2str(L)];
 img_files = dir([video_path '*.png']);
 if isempty(img_files),
     img_files = dir(fullfile(video_path, '*.jpg'));
@@ -32,7 +32,7 @@ end
 load('groundtruth.mat')
 
 %%%%%%%%%%% Path to the code %%%%%%%%%%%%%%%
-codeDirectory=['C:\Insect_Vision_Model'];
+codeDirectory=['C:\Users\ag803\STMD\ACRA_files_2018_and_2019\ACRA2019\Model_script_dev\IIT_Model'];
 cd(codeDirectory)
 
 %%%%%%%%%%% Set the Parameters %%%%%%%%%%%%
