@@ -41,43 +41,49 @@ def save_fig(title):
     plt.savefig(os.path.join(save_out, title))
     plt.close()
 
-images = cv2.imread(os.path.join(os.getcwd(), '4496768/STNS1/26', 'IMG00896.jpg'))
-degrees_in_image = 50
-
-# Extract green channel from BGR
-green = images[:,:,1]
-
-image_size = green.shape
-pixels_per_degree = image_size[1]/degrees_in_image # horizontal pixels in output / horizontal degrees (97.84)
-pixel2PR = int(np.ceil(pixels_per_degree)) # ratio of pixels to photoreceptors in the bio-mimetic model (1 deg spatial sampling... )
-
-sigma = 1.4 / (2 * np.sqrt(2 * np.log(2)))
-sigma_pixel = sigma * pixels_per_degree # sigma_pixel = (sigma in degrees (0.59))*pixels_per_degree
-kernel_size = int(2 * np.ceil(sigma_pixel))
-
-# Spatial filtered through LPF1
-sf = gaussian_filter(green, radius=kernel_size, sigma=sigma_pixel)
-
-# Downsampled green channel
-DownsampledGreen = sf[::pixel2PR, ::pixel2PR]
-# DownsampledGreen = cv2.resize(sf, None, fx=1/pixel2PR, fy=1/pixel2PR, interpolation=cv2.INTER_AREA)
-
 b = np.array([0, 0.0001, -0.0011, 0.0052, -0.0170, 0.0439, -0.0574, 0.1789, -0.1524])
 a = np.array([1, -4.3331, 8.6847, -10.7116, 9.0004, -5.3058, 2.1448, -0.5418, 0.0651])
 
-def IIR_Filter(b, a, Signal, dbuffer):
-    for k in range(len(b)-1):
-        dbuffer[:,:,k]=dbuffer[:,:,k+1];
-    dbuffer[:,:,-1]=np.zeros(dbuffer[:,:,-1].shape);
-    for k in range(len(b)):
-        dbuffer[:,:,k]=dbuffer[:,:,k]+Signal*b[k];
-    for k in range(len(b)-1):
-        dbuffer[:,:,k+1]=dbuffer[:,:,k+1]-dbuffer[:,:,0]*a[k+1];
-    Filtered_Data=dbuffer[:,:,0]
-    return Filtered_Data, dbuffer
+root = os.path.join(os.getcwd(), '4496768/STNS1/26')
+files = [file for file in os.listdir(root) if file.endswith('.jpg')]
 
-dbuffer1 = np.zeros((35,46,len(b)))
-for i in range(len(b)):
+for file in files:
+    images = cv2.imread(os.path.join(root, file))
+    degrees_in_image = 50
+    
+    # Extract green channel from BGR
+    green = images[:,:,1]
+    
+    image_size = green.shape
+    pixels_per_degree = image_size[1]/degrees_in_image # horizontal pixels in output / horizontal degrees (97.84)
+    pixel2PR = int(np.ceil(pixels_per_degree)) # ratio of pixels to photoreceptors in the bio-mimetic model (1 deg spatial sampling... )
+    
+    sigma = 1.4 / (2 * np.sqrt(2 * np.log(2)))
+    sigma_pixel = sigma * pixels_per_degree # sigma_pixel = (sigma in degrees (0.59))*pixels_per_degree
+    kernel_size = int(2 * np.ceil(sigma_pixel))
+    
+    # Spatial filtered through LPF1
+    sf = gaussian_filter(green, radius=kernel_size, sigma=sigma_pixel)
+    
+    # Downsampled green channel
+    DownsampledGreen = sf[::pixel2PR, ::pixel2PR]
+    # DownsampledGreen = cv2.resize(sf, None, fx=1/pixel2PR, fy=1/pixel2PR, interpolation=cv2.INTER_AREA)
+    
+    def IIR_Filter(b, a, Signal, dbuffer):
+        dbuffer[:,:,:-1] = dbuffer[:,:,1:]
+        dbuffer[:,:,-1] = np.zeros(dbuffer[:,:,-1].shape)
+        for k in range(len(b)):
+            dbuffer[:,:,k] += (Signal * b[k])
+            if k <= (len(b)-2):
+                dbuffer[:,:,k+1] = dbuffer[:,:,k+1] - (dbuffer[:,:,0] * a[k+1])
+        Filtered_Data=dbuffer[:,:,0]
+        return Filtered_Data, dbuffer
+    
+    try:
+        dbuffer1
+    except NameError:
+        dbuffer1 = np.zeros((*DownsampledGreen.shape, len(b)))
+        
     image_z, dbuffer1 = IIR_Filter(b, a, DownsampledGreen/255, dbuffer1)
 
 def continuous(b, a):

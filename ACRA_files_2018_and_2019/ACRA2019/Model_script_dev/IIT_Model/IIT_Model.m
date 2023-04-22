@@ -38,8 +38,8 @@ cd(codeDirectory)
 %%%%%%%%%%% Set the Parameters %%%%%%%%%%%%
 
 %Center of the target in the first frame
-X_C=(groundtruth(1,1)+groundtruth(1,3)/2);   
-Y_C=groundtruth(1,2)+groundtruth(1,4)/2;  
+X_C=100;%(groundtruth(1,1)+groundtruth(1,3)/2);   
+Y_C=50;%groundtruth(1,2)+groundtruth(1,4)/2;  
 
 %Image size
 image_size_m = size(dataGreenChannel,1) ;                         %number of rows
