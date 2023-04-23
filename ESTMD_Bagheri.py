@@ -157,7 +157,13 @@ for t, file in enumerate(files):
         Correlate_ON_OFF = on_filtered * delayed_on[:,:,t]
         Correlate_OFF_ON = off_filtered * delayed_off[:,:,t]
         
-        RTC_Output = Correlate_ON_OFF + Correlate_OFF_ON
+        ESTMD_Output = Correlate_ON_OFF + Correlate_OFF_ON
+        
+        # RTC
+        RTC_on = on_filtered + delayed_off[:,:,t]
+        RTC_off = off_filtered + delayed_on[:,:,t]
+        
+        RTC_Output = RTC_on + RTC_off
 
 def continuous(b, a):
     # Difference of Lognormals - Continuous filter
@@ -182,8 +188,8 @@ def continuous(b, a):
     ax.legend()
 
 def __plots():
-    visualise([image, green, sf, DownsampledGreen, PhotoreceptorOut, LMC_Out, a_on, a_off, on_filtered, off_filtered, RTC_Output], 
-              title=['images', 'green', 'sf', 'DownsampledGreen', 'PhotoreceptorOut', 'LMC_Out', 'a_on', 'a_off', 'on_filtered', 'off_filtered',
-                     'RTC_Output'])
+    visualise([image, green, sf, DownsampledGreen, PhotoreceptorOut, LMC_Out, a_on, a_off, on_filtered, off_filtered, ESTMD_Output, RTC_Output], 
+              title=['images', 'green', 'sf', 'DownsampledGreen', 'PhotoreceptorOut', 'LMC_Out', 'After FDSR_on', 'After FDSR_off', 
+                     'on_filtered', 'off_filtered', 'ESTMD_Output', 'RTC_Output'])
     
 __plots()
