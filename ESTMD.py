@@ -132,16 +132,16 @@ class ESTMD:
         self.DELAY_TAU = 25.0
         
         # Decay terms
-        self.LIPETZ_LPF_K = 1 - np.exp(-1 / self.LIPETZ_LPF_TAU)
-        self.LPF_2_K = 1 - np.exp(-1 / self.LPF_2_TAU)
-        self.HPF_R_K = 1- np.exp(-1 / self.HPF_R_TAU)
-        self.LPF_3_K = 1 - np.exp(-1 / self.LPF_3_TAU)
+        self.LIPETZ_LPF_K = np.exp(-1 / self.LIPETZ_LPF_TAU)
+        self.LPF_2_K = np.exp(-1 / self.LPF_2_TAU)
+        self.HPF_R_K = np.exp(-1 / self.HPF_R_TAU)
+        self.LPF_3_K = np.exp(-1 / self.LPF_3_TAU)
         
-        self.HPF_K = 1 - np.exp(-1 / self.HPF_TAU)
-        self.INHIB_LPF_K = 1 - np.exp(-1 / self.INHIB_LPF_TAU)
-        self.FDSR_K_FAST = 1 - np.exp(-1 / self.FDSR_TAU_FAST)
-        self.FDSR_K_SLOW = 1 - np.exp(-1 / self.FDSR_TAU_SLOW)
-        self.DELAY_K = 1 - np.exp(-1 / self.DELAY_TAU)
+        self.HPF_K = np.exp(-1 / self.HPF_TAU)
+        self.INHIB_LPF_K = np.exp(-1 / self.INHIB_LPF_TAU)
+        self.FDSR_K_FAST = np.exp(-1 / self.FDSR_TAU_FAST)
+        self.FDSR_K_SLOW = np.exp(-1 / self.FDSR_TAU_SLOW)
+        self.DELAY_K = np.exp(-1 / self.DELAY_TAU)
         
         self.HPF_K = np.exp((-1 * self.DT) / self.HPF_TAU)
         self.INHIB_LPF_K = np.exp((-1 * self.DT) / self.INHIB_LPF_TAU)
