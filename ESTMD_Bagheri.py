@@ -20,7 +20,10 @@ save_folder = os.path.join(os.getcwd(), 'Bagheri')
 def visualise(vars, labels=None, **kwargs):
     for i, var in enumerate(vars):
         fig, axes = plt.subplots(figsize=(12,9))
-        axes.imshow(var)
+        if len(var.shape) > 2 and not var.shape[-1] == 3:
+            axes.imshow(var[:,:,-1])
+        else:
+            axes.imshow(var)
                 
         axes.get_xaxis().set_visible(False)
         axes.get_yaxis().set_visible(False)
@@ -81,12 +84,19 @@ def IIR_Filter(b, a, Signal, dbuffer):
 """
 Initialisations
 """
-on_f = np.zeros((34, 46, 896))
-off_f = np.zeros(on_f.shape)
-fdsr_on = np.zeros(on_f.shape)
-fdsr_off = np.zeros(off_f.shape)
-delayed_on = np.zeros(on_f.shape)
-delayed_off = np.zeros(off_f.shape)
+sf = np.zeros((240, 320, len(files)))
+PhotoreceptorOut = np.zeros((34, 46, len(files)))
+LMC_Out = np.zeros((34, 46, len(files)))
+on_f = np.zeros((34, 46, len(files)))
+off_f = np.zeros((34, 46, len(files)))
+fdsr_on = np.zeros((34, 46, len(files)))
+fdsr_off = np.zeros((34, 46, len(files)))
+on_filtered = np.zeros((34, 46, len(files)))
+off_filtered = np.zeros((34, 46, len(files)))
+delayed_on = np.zeros((34, 46, len(files)))
+delayed_off = np.zeros((34, 46, len(files)))
+ESTMD_Output = np.zeros((34, 46, len(files)))
+RTC_Output = np.zeros((34, 46, len(files)))
 
 """
 Simulation of ESTMD
@@ -108,10 +118,10 @@ for t, file in enumerate(files):
     kernel_size = int(2 * np.ceil(sigma_pixel))
     
     # Spatial filtered through LPF1
-    sf = gaussian_filter(green, radius=kernel_size, sigma=sigma_pixel)
+    sf[:,:,t] = gaussian_filter(green, radius=kernel_size, sigma=sigma_pixel)
     
     # Downsampled green channel
-    DownsampledGreen = cv2.resize(sf, None, fx=1/pixel2PR, fy=1/pixel2PR, interpolation=cv2.INTER_AREA)
+    DownsampledGreen = cv2.resize(sf[:,:,t], None, fx=1/pixel2PR, fy=1/pixel2PR, interpolation=cv2.INTER_AREA)
     
     try:
         dbuffer1
@@ -119,15 +129,15 @@ for t, file in enumerate(files):
         dbuffer1 = np.zeros((*DownsampledGreen.shape, len(photo_z["b"])))
     
     # Photoreceptor output after temporal band-pass filtering
-    PhotoreceptorOut, dbuffer1 = IIR_Filter(photo_z["b"], photo_z["a"], DownsampledGreen/255, dbuffer1)
+    PhotoreceptorOut[:,:,t], dbuffer1 = IIR_Filter(photo_z["b"], photo_z["a"], DownsampledGreen/255, dbuffer1)
     
     # LMC output after spatial high pass filtering
-    LMC_Out = signal.convolve2d(PhotoreceptorOut, CSA_KERNEL, boundary='symm', mode='same')
+    LMC_Out[:,:,t] = signal.convolve2d(PhotoreceptorOut[:,:,t], CSA_KERNEL, boundary='symm', mode='same')
     
     # Half-wave rectification
     # Clamp the high pass filtered data to separate the on and off channels
-    on_f[:,:,t] = np.maximum(LMC_Out, 0.0)
-    off_f[:,:,t] = -np.minimum(LMC_Out, 0.0)
+    on_f[:,:,t] = np.maximum(LMC_Out[:,:,t], 0.0)
+    off_f[:,:,t] = -np.minimum(LMC_Out[:,:,t], 0.0)
     
     # FDSR Implementation
     if t > 0:
@@ -146,24 +156,24 @@ for t, file in enumerate(files):
         # Inhibition is implemented as spatial filter
         # Not true if this is a chemical synapse as this would require delays
         # Half-wave rectification added
-        on_filtered = signal.convolve2d(a_on, INHIB_KERNEL, boundary='symm', mode='same').clip(min=0)
-        off_filtered = signal.convolve2d(a_off, INHIB_KERNEL, boundary='symm', mode='same').clip(min=0)
+        on_filtered[:,:,t] = signal.convolve2d(a_on, INHIB_KERNEL, boundary='symm', mode='same').clip(min=0)
+        off_filtered[:,:,t] = signal.convolve2d(a_off, INHIB_KERNEL, boundary='symm', mode='same').clip(min=0)
         
         # Delayed channels for LPF5
-        delayed_on[:,:,t] = ((1.0 - LPF5_K) * on_filtered) + (LPF5_K * delayed_on[:,:,t-1])
-        delayed_off[:,:,t] = ((1.0 - LPF5_K) * off_filtered) + (LPF5_K * delayed_off[:,:,t-1])
+        delayed_on[:,:,t] = ((1.0 - LPF5_K) * on_filtered[:,:,t]) + (LPF5_K * delayed_on[:,:,t-1])
+        delayed_off[:,:,t] = ((1.0 - LPF5_K) * off_filtered[:,:,t]) + (LPF5_K * delayed_off[:,:,t-1])
         
         # Correlation between channels
-        Correlate_ON_OFF = on_filtered * delayed_on[:,:,t]
-        Correlate_OFF_ON = off_filtered * delayed_off[:,:,t]
+        Correlate_ON_OFF = on_filtered[:,:,t] * delayed_on[:,:,t]
+        Correlate_OFF_ON = off_filtered[:,:,t] * delayed_off[:,:,t]
         
-        ESTMD_Output = Correlate_ON_OFF + Correlate_OFF_ON
+        ESTMD_Output[:,:,t] = Correlate_ON_OFF + Correlate_OFF_ON
         
         # RTC
-        RTC_on = on_filtered + delayed_off[:,:,t]
-        RTC_off = off_filtered + delayed_on[:,:,t]
+        RTC_on = on_filtered[:,:,t] + delayed_off[:,:,t]
+        RTC_off = off_filtered[:,:,t] + delayed_on[:,:,t]
         
-        RTC_Output = RTC_on + RTC_off
+        RTC_Output[:,:,t] = RTC_on + RTC_off
 
 def continuous(b, a):
     # Difference of Lognormals - Continuous filter
@@ -178,7 +188,7 @@ def continuous(b, a):
     # Approximation of log-normals
     t, y = signal.dimpulse((b, a, 1/1000))
     
-    fig, ax = plt.subplots()
+    fig, ax = plt.subplots(figsize=(12,9))
     ax.plot(T, G, label='log-normal')
     ax.step(t, np.squeeze(y), label='approximation')
     
@@ -186,10 +196,13 @@ def continuous(b, a):
     ax.set_ylabel('Normalised Amplitude')
     
     ax.legend()
+    save_fig('Time domain to z transform')
+    
+continuous(photo_z["b"], photo_z["a"])
 
 def __plots():
     visualise([image, green, sf, DownsampledGreen, PhotoreceptorOut, LMC_Out, a_on, a_off, on_filtered, off_filtered, ESTMD_Output, RTC_Output], 
-              title=['images', 'green', 'sf', 'DownsampledGreen', 'PhotoreceptorOut', 'LMC_Out', 'After FDSR_on', 'After FDSR_off', 
+              title=['image', 'green', 'sf', 'DownsampledGreen', 'PhotoreceptorOut', 'LMC_Out', 'After FDSR_on', 'After FDSR_off', 
                      'on_filtered', 'off_filtered', 'ESTMD_Output', 'RTC_Output'])
     
 __plots()
