@@ -17,7 +17,7 @@ Helper functions
 
 save_folder = os.path.join(os.getcwd(), 'Bagheri')
 
-def visualise(vars, labels=None, **kwargs):
+def visualise(vars, **kwargs):
     for i, var in enumerate(vars):
         fig, axes = plt.subplots(figsize=(12,9))
         if len(var.shape) > 2 and not var.shape[-1] == 3:
@@ -44,8 +44,12 @@ def save_fig(title):
     plt.savefig(os.path.join(save_out, title))
     plt.close()
 
-root = os.path.join(os.getcwd(), '4496768/STNS1/26')
-files = [file for file in os.listdir(root) if file.endswith('.jpg')]
+nominal_folder = '4496768/STNS2/27'
+image_folder = 'Bagheri/images'
+root = os.path.join(os.getcwd(), image_folder)
+# Acceptable image file extensions
+exts = ['.jpg', '.png']
+files = [file for file in os.listdir(root) if file.endswith(tuple(exts))]
 
 photo_z = {"b" : np.array([0, 0.0001, -0.0011, 0.0052, -0.0170, 0.0439, -0.0574, 0.1789, -0.1524]), 
            "a" : np.array([1, -4.3331, 8.6847, -10.7116, 9.0004, -5.3058, 2.1448, -0.5418, 0.0651])}
@@ -68,6 +72,33 @@ INHIB_KERNEL = np.array([[-1, -1, -1, -1, -1],
                          [-1, 0, 0, 0, -1],
                          [-1, -1, -1, -1, -1]])
 
+# Widefield stimuli to check RTC as in Wiederman paper (2008)
+def widefield_stimuli():
+    PULSE_WIDTH = 5 # Pulse width
+    INTERVAL = 10
+    TIMESTEPS = (INTERVAL + PULSE_WIDTH) * 20 # Timestep to see adaptation
+        
+    images = np.ones((240, 320, TIMESTEPS)) * 128
+    save_images_root = os.path.join(os.getcwd(), image_folder)
+    os.makedirs(save_images_root, exist_ok=True)
+
+    for i in range(TIMESTEPS):
+        if i <= TIMESTEPS / 2:
+            if not i % (PULSE_WIDTH + INTERVAL):
+                for k in range(PULSE_WIDTH):
+                    images[:,:,i+k] = 255
+        else:
+            if not i % (PULSE_WIDTH + INTERVAL):
+                for k in range(PULSE_WIDTH):
+                    images[:,:,i+k] = 64
+    
+    images = np.concatenate((np.ones((*images[:,:,-1].shape, 5)) * 128, images), axis=-1)
+    
+    for i in range(images.shape[-1]):
+        cv2.imwrite(os.path.join(save_images_root, 'IMG00' + f'{i+1}' + '.png'), images[:,:,i])
+                    
+    return images
+    
 # IIR temporal band-pass filter
 def IIR_Filter(b, a, Signal, dbuffer):
     dbuffer[:,:,:-1] = dbuffer[:,:,1:]
@@ -91,6 +122,8 @@ on_f = np.zeros((34, 46, len(files)))
 off_f = np.zeros((34, 46, len(files)))
 fdsr_on = np.zeros((34, 46, len(files)))
 fdsr_off = np.zeros((34, 46, len(files)))
+a_on = np.zeros((34, 46, len(files)))
+a_off = np.zeros((34, 46, len(files)))
 on_filtered = np.zeros((34, 46, len(files)))
 off_filtered = np.zeros((34, 46, len(files)))
 delayed_on = np.zeros((34, 46, len(files)))
@@ -150,22 +183,22 @@ for t, file in enumerate(files):
         fdsr_off[:,:,t] = ((1.0 - k_off) * off_f[:,:,t]) + (k_off * fdsr_off[:,:,t-1])
         
         # Subtract FDSR from half-wave rectified 
-        a_on = (on_f[:,:,t] - fdsr_on[:,:,t]).clip(min=0)
-        a_off = (off_f[:,:,t] - fdsr_off[:,:,t]).clip(min=0)
+        a_on[:,:,t] = (on_f[:,:,t] - fdsr_on[:,:,t]).clip(min=0)
+        a_off[:,:,t] = (off_f[:,:,t] - fdsr_off[:,:,t]).clip(min=0)
         
         # Inhibition is implemented as spatial filter
         # Not true if this is a chemical synapse as this would require delays
         # Half-wave rectification added
-        on_filtered[:,:,t] = signal.convolve2d(a_on, INHIB_KERNEL, boundary='symm', mode='same').clip(min=0)
-        off_filtered[:,:,t] = signal.convolve2d(a_off, INHIB_KERNEL, boundary='symm', mode='same').clip(min=0)
+        on_filtered[:,:,t] = signal.convolve2d(a_on[:,:,t], INHIB_KERNEL, boundary='symm', mode='same').clip(min=0)
+        off_filtered[:,:,t] = signal.convolve2d(a_off[:,:,t], INHIB_KERNEL, boundary='symm', mode='same').clip(min=0)
         
         # Delayed channels for LPF5
         delayed_on[:,:,t] = ((1.0 - LPF5_K) * on_filtered[:,:,t]) + (LPF5_K * delayed_on[:,:,t-1])
         delayed_off[:,:,t] = ((1.0 - LPF5_K) * off_filtered[:,:,t]) + (LPF5_K * delayed_off[:,:,t-1])
         
         # Correlation between channels
-        Correlate_ON_OFF = on_filtered[:,:,t] * delayed_on[:,:,t]
-        Correlate_OFF_ON = off_filtered[:,:,t] * delayed_off[:,:,t]
+        Correlate_ON_OFF = on_filtered[:,:,t] * delayed_off[:,:,t]
+        Correlate_OFF_ON = off_filtered[:,:,t] * delayed_on[:,:,t]
         
         ESTMD_Output[:,:,t] = Correlate_ON_OFF + Correlate_OFF_ON
         
@@ -174,6 +207,35 @@ for t, file in enumerate(files):
         RTC_off = off_filtered[:,:,t] + delayed_on[:,:,t]
         
         RTC_Output[:,:,t] = RTC_on + RTC_off
+
+def _RTC(vars, **kwargs):
+    # Initialise ragged nested list
+    var_vals = [[[] for i in range(len(j))] for j in vars]
+    for v, var in enumerate(vars):
+        for i, var_t in enumerate(var):
+            for j in range(var_t.shape[-1]):
+                # All values in photoreceptor array should be the same
+                frame = var_t[:,:,j]
+                var_vals[v][i].append(frame[0][0])
+            
+        fig, ax = plt.subplots(figsize=(12,9))
+        for i, val in enumerate(var_vals[v]):
+            ax.plot(val)
+        ax.set_xlabel('Time (msec)')
+        if len(var) > 1:
+            ax.legend(labels = ['On', 'Off'])
+        ax.get_yaxis().set_visible(False)
+        
+        RTC_Out_folder = os.path.join(save_folder, 'RTC_images')
+        os.makedirs(RTC_Out_folder, exist_ok=True)
+
+        save_fig(os.path.join(RTC_Out_folder, kwargs['title'][v]))
+        
+    return var_vals
+
+_RTC([[sf], [PhotoreceptorOut], [LMC_Out], [fdsr_on, fdsr_off], [ESTMD_Output], [RTC_Output], [on_filtered, delayed_off], [delayed_on, off_filtered],
+      [on_f, off_f], [a_on, a_off]], 
+      title=['sf', 'PhotoreceptorOut', 'LMC_Out', 'FDSR', 'ESTMD', 'RTC', 'On_D_OFF', 'Off_D_ON', 'HWR1', 'After FDSR'])
 
 def continuous(b, a):
     # Difference of Lognormals - Continuous filter
@@ -195,14 +257,13 @@ def continuous(b, a):
     ax.set_xlabel('Time (sec)')
     ax.set_ylabel('Normalised Amplitude')
     
-    ax.legend()
+    ax.legend(fontsize=25)
     save_fig('Time domain to z transform')
     
-continuous(photo_z["b"], photo_z["a"])
-
 def __plots():
     visualise([image, green, sf, DownsampledGreen, PhotoreceptorOut, LMC_Out, a_on, a_off, on_filtered, off_filtered, ESTMD_Output, RTC_Output], 
               title=['image', 'green', 'sf', 'DownsampledGreen', 'PhotoreceptorOut', 'LMC_Out', 'After FDSR_on', 'After FDSR_off', 
                      'on_filtered', 'off_filtered', 'ESTMD_Output', 'RTC_Output'])
-    
-__plots()
+
+# continuous(photo_z["b"], photo_z["a"])    
+# __plots()
