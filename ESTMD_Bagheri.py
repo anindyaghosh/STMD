@@ -4,73 +4,293 @@ ESTMD model as per Bagheri and Wiederman
 
 import cv2
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 import numpy as np
 import os
-from scipy.ndimage import gaussian_filter
 from scipy import signal
+import scipy.io
 import time
+
+import naturalistic_noise
 
 """
 Helper functions
 """
 
+# For quick shell script
+# import argparse
+# parser = argparse.ArgumentParser()
+# parser.add_argument('-nf', '--nominal_folder', type=str)
+# parser.add_argument('-v', '--value', type=float)
+# parser.add_argument('-f', '--folder', type=str)
+
+# args = parser.parse_args()
+
 save_folder = os.path.join(os.getcwd(), 'Bagheri')
 
-def visualise(vars, **kwargs):
+def visualise(vars, sub_folder=None, **kwargs):
     for i, var in enumerate(vars):
-        fig, axes = plt.subplots(figsize=(12,9))
+        fig, axes = plt.subplots(figsize=(48,36))
         if len(var.shape) > 2 and not var.shape[-1] == 3:
             axes.imshow(var[:,:,-1])
         else:
+            var = cv2.cvtColor(var, cv2.COLOR_BGR2RGB)
             axes.imshow(var)
-                
-        axes.get_xaxis().set_visible(False)
-        axes.get_yaxis().set_visible(False)
+        hide_axes(axes)
         
-        save_fig(kwargs['title'][i])
+        save_fig(kwargs['title'][i], sub_folder)
 
 # Helper function to hide axes ticks etc on axis
 def hide_axes(axis):
     axis.get_xaxis().set_visible(False)
     axis.get_yaxis().set_visible(False)
 
-# Helper function to save out images from different stages    
-def save_fig(title):
-    save_out = os.path.join(os.getcwd(), 'figs', time.strftime("%Y_%m_%d"), save_folder)
+# Helper function to save out images from different stages
+def save_fig(title, sub_folder=None):
+    if sub_folder is None:
+        save_out = os.path.join(os.getcwd(), 'figs', time.strftime("%Y_%m_%d"), save_folder)
+    else:
+        save_out = os.path.join(os.getcwd(), 'figs', time.strftime("%Y_%m_%d"), save_folder, sub_folder)
     # save_out = os.path.join(os.getcwd(), 'figs', 'test', save_folder)
     os.makedirs(save_out, exist_ok=True)
     
-    plt.savefig(os.path.join(save_out, title))
+    plt.savefig(os.path.join(save_out, title), bbox_inches='tight', pad_inches=0)
     plt.close()
 
-nominal_folder = '4496768/STNS2/27'
+def naming_convention(i):
+    # zfill pads string with zeros from leading edge until len(string) = 6
+    return 'IMG' + str(i).zfill(6)
+
+nominal_folder = '4496768/STNS3/28' # args.nominal_folder.rstrip() # '4496768/STNS3/28'
 image_folder = 'Bagheri/images'
-root = os.path.join(os.getcwd(), image_folder)
+tuning_folder = 'Bagheri/Tuning'
+botanic_folder = 'Bagheri/botanic'
+root = os.path.join(os.getcwd(), botanic_folder) # Has to change between image_folder and tuning_folder for tuning experiments
 # Acceptable image file extensions
 exts = ['.jpg', '.png']
-files = [file for file in os.listdir(root) if file.endswith(tuple(exts))]
+files = [file for file in os.listdir(root) if (file.endswith(tuple(exts)) and 'IMG' in file)]
+
+# Obtain ground truths
+if any(x in root for x in [nominal_folder, 'botanic']):
+    with open(os.path.join(root, 'GroundTruth.txt')) as groundTruth:
+        GT = []
+        for line in groundTruth:
+            # Save all ground truths as tuples
+            tup = eval(line.rstrip())
+            start_xy = (tup[0], tup[1])
+            end_xy = (tup[0] + tup[2], tup[1] + tup[3])
+            GT.append((*start_xy, *end_xy))
+    groundTruth.close()
 
 photo_z = {"b" : np.array([0, 0.0001, -0.0011, 0.0052, -0.0170, 0.0439, -0.0574, 0.1789, -0.1524]), 
            "a" : np.array([1, -4.3331, 8.6847, -10.7116, 9.0004, -5.3058, 2.1448, -0.5418, 0.0651])}
+
+"""
+TAU for FDSR and LPF5, z-transforms
+"""
+Ts = 0.001
+LPF5_TAU = 25 * Ts
+LPF_5 = {"b" : np.array([1 / (1+2*LPF5_TAU/Ts), 1 / (1+2*LPF5_TAU/Ts)]), 
+         "a" : np.array([1, (1-2*LPF5_TAU/Ts) / (1+2*LPF5_TAU/Ts)])}
+
+LPFHR_TAU = 40 * Ts
+
+LPF_HR = {"b" : np.array([1 / (1+2*LPFHR_TAU/Ts), 1 / (1+2*LPFHR_TAU/Ts)]), 
+          "a" : np.array([1, (1-2*LPFHR_TAU/Ts) / (1+2*LPFHR_TAU/Ts)])}
 
 CSA_KERNEL = np.asarray([[-1, -1, -1],
                          [-1, 8, -1],
                          [-1, -1, -1]]) * 1/9
 
-FDSR_TAU_FAST = 3.0
-FDSR_TAU_SLOW = 70.0
-LPF5_TAU = 25.0
+FDSR_TAU_FAST_ON = 0.5/50 * Ts*1000
+FDSR_TAU_FAST_OFF = 0.25/50 * Ts*1000
 
-FDSR_K_FAST = np.exp(-1 / FDSR_TAU_FAST)
-FDSR_K_SLOW = np.exp(-1 / FDSR_TAU_SLOW)
-LPF5_K = np.exp(-1 / LPF5_TAU)
+FDSR_TAU_SLOW = 5.0/50 * Ts*1000
+
+FDSR_K_FAST_ON = np.exp(-1*Ts / FDSR_TAU_FAST_ON)
+FDSR_K_FAST_OFF = np.exp(-1*Ts / FDSR_TAU_FAST_OFF)
+
+FDSR_K_SLOW = np.exp(-1*Ts / FDSR_TAU_SLOW)
+
+LPF5_K = np.exp(-1*0.05 / LPF5_TAU)
 
 INHIB_KERNEL = np.array([[-1, -1, -1, -1, -1],
-                         [-1, 0, 0, 0, -1],
-                         [-1, 0, 2, 0, -1],
-                         [-1, 0, 0, 0, -1],
-                         [-1, -1, -1, -1, -1]])
+                          [-1, 0, 0, 0, -1],
+                          [-1, 0, 2, 0, -1],
+                          [-1, 0, 0, 0, -1],
+                          [-1, -1, -1, -1, -1]])
+
+# INHIB_KERNEL = np.array([[-1, -1, -1, -1, -1],
+#                           [-1, -1, -1, -1, -1],
+#                           [-1, -1, 2, -1, -1],
+#                           [-1, -1, -1, -1, -1],
+#                           [-1, -1, -1, -1, -1]])
+
+# Wiederman (2008)
+def create_botanic_panorama():
+    image = cv2.imread(os.path.join(botanic_folder, 'HDR_Botanic_RGB_lin.tif'))
+    
+    # Target size definitions
+    pixels_per_degree = image.shape[1]/360
+    target_size = round(2.8 * pixels_per_degree) # 2.8 degrees is optimal target size
+    start = (205, 1225) # 770
+    
+    image[start[0]:start[0]+target_size, start[1]:start[1]+target_size,:] = 0
+    
+    # Calculate velocity of image
+    velocity = (120/1000) * pixels_per_degree # 120 degrees/second gives optimal latency of 33 ms in desired response range
+    velocity *= (Ts*1000) # Sample every 1 timestep (ms)
+    
+    with open(os.path.join(root, 'GroundTruth.txt'), 'w') as f:
+        for timestep in range(100):
+            cv2.imwrite(os.path.join(botanic_folder, naming_convention(timestep+1) + '.png'), image)
+            
+            # Roll image by specific time
+            image = np.roll(image, round(velocity), axis=1)
+            
+            x, y = start[0], start[1]+round(velocity)*timestep # start[0]+target_size, start[1]+round(velocity)*timestep
+            # Adjust for roll
+            if y >= image.shape[1]:
+                y -= image.shape[1]
+                
+            f.write(f'{y},{x},{target_size},{target_size}')
+            f.write('\n')
+        f.close()
+    
+if botanic_folder in root:
+    create_botanic_panorama()
+    
+# Nordstrom and O'Carroll (2006)
+def image_generation(pixels_per_degree, timestep, mode=None, clutter=None):
+    
+    if not any([mode, clutter]):
+        raise TypeError('Missing mode and clutter. Either height or velocity')
+        
+    images = np.ones((240, 320)) * 255
+    
+    # Height tuning
+    if mode == 'height':
+        target_speed = (50/1000) * pixels_per_degree # 50 degrees per second
+        target_size = round(12 * pixels_per_degree)
+        
+    # Velocity tuning        
+    elif mode == 'velocity':
+        target_speed = (1000/1000) * pixels_per_degree
+        target_size = round(2.8 * pixels_per_degree) # 2.2 degrees
+        
+    if clutter:
+        if mode is None:
+            target_speed = (300/1000) * pixels_per_degree # 300 degrees per second
+            target_size = round(2.2 * pixels_per_degree) # 2.2 degrees
+        
+        # Images become cluttered
+        mean_magnitude = naturalistic_noise.fourier()
+        images = mean_magnitude
+    
+    # Position of target based on target speed
+    x_loc = round(target_speed * timestep)
+    
+    # Define dark target
+    images[2:2+target_size, x_loc:x_loc+target_size] = 0
+    
+    save_dir = os.path.join(os.getcwd(), 'Bagheri', 'Tuning')
+    os.makedirs(save_dir, exist_ok=True)
+    cv2.imwrite(os.path.join(save_dir, naming_convention(timestep+1) + '.png'), images)
+
+def indices_of_max_value(arr):    
+    # Used to find indices of max value in array (ESTMD_Output)
+    # Target in second row
+    arr_sub = arr[2,:,:]
+    return np.unravel_index(np.argmax(arr_sub, axis=None), arr_sub.shape)
+    
+def tuning_plots(mode):
+    if mode == 'height':
+        tuning_array_file = 'height_tuning_ESTMD.txt'
+        label = 'Target Height [$\degree$]'
+    elif mode == 'velocity':
+        tuning_array_file = 'velocity_tuning_ESTMD.txt'
+        label = 'Target Velocity [$\degree$/s]'
+    else:
+        raise ValueError('Incorrect mode. Check spelling of mode in call')
+    
+    with open(tuning_array_file, "r") as file:
+        tuning_array = []
+        # Read file
+        for line in file:
+            values = eval(line.rstrip())
+            tuning_array.append(values)
+    
+    tuning_array = np.asarray(tuning_array).T
+    tuning_array[1,:] = tuning_array[1,:]/np.max(tuning_array[1,:])
+    
+    import matplotlib.ticker as ticker
+    
+    fig, axes = plt.subplots(figsize=(12,9))
+    estmd = axes.plot(tuning_array[0,:], tuning_array[1,:], '-o', label='Model ESTMD')
+    
+    ax2 = axes.twinx()
+    ax_latency = ax2.plot(tuning_array[0,:], tuning_array[2,:], 'r^', label='Latency', markersize=4)
+    
+    axs = estmd + ax_latency
+    labs1 = [l.get_label() for l in axs]
+    axes.legend(axs, labs1)
+    
+    # if mode == 'velocity':
+    #     col = np.argwhere(tuning_array == 300)[0][1]
+    #     axes.plot(tuning_array[0,col], tuning_array[1,col], 'k*', markersize=10)
+    #     ax2.plot(tuning_array[0,col], tuning_array[2,col], 'k*', markersize=10)
+    axes.set_xscale('log')
+    axes.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: '{:g}'.format(x)))
+    axes.set_xlabel(label)
+    axes.set_ylabel('ESTMD Response (normalised)')
+    ax2.set_ylabel('Latency [ms]')
+    
+# tuning_plots('height')
+
+def Bagheri_load_results():
+    # Percentage time in bounding box
+    results_row = scipy.io.loadmat(os.path.join(nominal_folder, 'results_Facil_on', 'TargetLocationRow.mat'))['TargetLocationRow']
+    results_col = scipy.io.loadmat(os.path.join(nominal_folder, 'results_Facil_on', 'TargetLocationCol.mat'))['TargetLocationCol']
+    
+    results_row_off = scipy.io.loadmat(os.path.join(nominal_folder, 'results_Facil_off', 'TargetLocationRow.mat'))['TargetLocationRow']
+    results_col_off = scipy.io.loadmat(os.path.join(nominal_folder, 'results_Facil_off', 'TargetLocationCol.mat'))['TargetLocationCol']
+    
+    return np.hstack((results_row, results_col)), np.hstack((results_row_off, results_col_off))
+
+def clamp(n, smallest, largest):
+    return [max(smallest, min(x, largest)) for x in n]
+
+def metric(bbox_ds, target_loc, success_MATLAB_counter, success_python_counter, delay):
+    for timestep, bbox in enumerate(bbox_ds[:-delay]):
+        # Ordinate
+        x_left, x_right = clamp([bbox[0], bbox[2]], 0, ds_size[1])
+        # Abscissa
+        y_left, y_right = clamp([bbox[1], bbox[3]], 0, ds_size[0])
+        
+        # Coordinates in bounding boxes
+        x, y = np.mgrid[y_left:y_right, x_left:x_right]
+        xy = np.vstack((x.flat, y.flat)).T
+        
+        # Check if target in frame
+        if xy.size > 0:
+            # Python success (This implementation)
+            pix_in_bbox = ESTMD_Output[xy[:,0],xy[:,1],timestep+delay]
+            if not all([v == 0 for v in pix_in_bbox]):
+                if np.max(pix_in_bbox)/np.max(ESTMD_Output[:,:,timestep+delay]) >= 0.99:
+                    success_python_counter.append(success_python_counter[-1] + 1)
+                else:
+                    success_python_counter.append(success_python_counter[-1])
+            else:
+                success_python_counter.append(success_python_counter[-1])
+            
+            # MATLAB success (Bagheri implementation)
+            for i, tl in enumerate(target_loc):
+                tl_ = tl[timestep+delay,:]
+                if any(np.equal(tl_, xy).all(axis=1)):
+                    success_MATLAB_counter[i].append(success_MATLAB_counter[i][-1] + 1)
+                else:
+                    success_MATLAB_counter[i].append(success_MATLAB_counter[i][-1])
+    
+    return success_MATLAB_counter, success_python_counter
 
 # Widefield stimuli to check RTC as in Wiederman paper (2008)
 def widefield_stimuli():
@@ -78,7 +298,7 @@ def widefield_stimuli():
     INTERVAL = 10
     TIMESTEPS = (INTERVAL + PULSE_WIDTH) * 20 # Timestep to see adaptation
         
-    images = np.ones((240, 320, TIMESTEPS)) * 128
+    images = np.ones((480, 640, TIMESTEPS)) * 128
     save_images_root = os.path.join(os.getcwd(), image_folder)
     os.makedirs(save_images_root, exist_ok=True)
 
@@ -93,11 +313,16 @@ def widefield_stimuli():
                     images[:,:,i+k] = 64
     
     images = np.concatenate((np.ones((*images[:,:,-1].shape, 5)) * 128, images), axis=-1)
+    mean_magnitude = naturalistic_noise.fourier()
     
     for i in range(images.shape[-1]):
-        cv2.imwrite(os.path.join(save_images_root, 'IMG00' + f'{i+1}' + '.png'), images[:,:,i])
+        images[:,:,i] = (images[:,:,i] + mean_magnitude) / 2
+        cv2.imwrite(os.path.join(save_images_root, naming_convention(i+1) + '.png'), images[:,:,i])
                     
     return images
+
+# if image_folder in root:
+#     images = widefield_stimuli()
     
 # IIR temporal band-pass filter
 def IIR_Filter(b, a, Signal, dbuffer):
@@ -112,24 +337,104 @@ def IIR_Filter(b, a, Signal, dbuffer):
     Filtered_Data = dbuffer[:,:,0]
     return Filtered_Data, dbuffer
 
+def folder_name(save_dir_type):
+    folder_num = root.split('/')[-1]
+    return '_'.join([save_dir_type, folder_num])
+
+def ESTMD_delay(ESTMD_var, bbox_ds, delay):
+    ESTMD = ESTMD_var[:,:,delay:]
+    for i in range(ESTMD.shape[2]):
+        snap = ESTMD[:,:,i]
+        # bbox_decision = lambda root: bbox_ds[i] if nominal_folder in root else None
+        bounding_box(snap, bbox_ds[i], i)
+        
+def bounding_box(image, bbox, t, upscale=None):
+    fig, axes = plt.subplots(figsize=(48,36))
+    axes.imshow(image, interpolation=None, cmap='gray')
+    
+    if bbox is not None:
+        x, y = bbox[:2]
+        tup_subtract = tuple(map(lambda i, j: i - j, bbox[-2:], bbox[:2]))
+        width, height = tup_subtract
+    
+        rect = plt.Rectangle((x-1.5, y+0.5), width-1, height-1, fill=False, color="limegreen", linewidth=1)
+        axes.add_patch(rect)
+    hide_axes(axes)
+    
+    number = naming_convention(t+1)
+    
+    if upscale is not None:
+        plt.text(0.2, 0.9, 'ESTMD Bagheri', fontsize=12, transform=plt.gcf().transFigure)
+        ESTMD_folder = 'MATLAB_Bagheri'
+    else:
+        ESTMD_folder = 'vid_ESTMD'
+        
+    save_fig(number, folder_name(ESTMD_folder))
+
+def upscale_MATLAB_figs(delay):    
+    vid_folder = 'C:/Users/ag803/STMD/4496768/STNS3/28/ESTMD_Facil'
+    files = [f'ESTMD_{i+delay+1}.png' for i in range(len(files)-delay)]
+    for t, filename in enumerate(files):
+        img = cv2.imread(os.path.join(vid_folder, filename))
+        bbox = GT[t]
+        bbox = tuple(map(lambda x: round(x/pixel2PR), bbox))
+        bounding_box(img.copy(), bbox, t, upscale=True)
+
+# upscale_MATLAB_figs(delay=10)
+
 """
 Initialisations
 """
-sf = np.zeros((240, 320, len(files)))
-PhotoreceptorOut = np.zeros((34, 46, len(files)))
-LMC_Out = np.zeros((34, 46, len(files)))
-on_f = np.zeros((34, 46, len(files)))
-off_f = np.zeros((34, 46, len(files)))
-fdsr_on = np.zeros((34, 46, len(files)))
-fdsr_off = np.zeros((34, 46, len(files)))
-a_on = np.zeros((34, 46, len(files)))
-a_off = np.zeros((34, 46, len(files)))
-on_filtered = np.zeros((34, 46, len(files)))
-off_filtered = np.zeros((34, 46, len(files)))
-delayed_on = np.zeros((34, 46, len(files)))
-delayed_off = np.zeros((34, 46, len(files)))
-ESTMD_Output = np.zeros((34, 46, len(files)))
-RTC_Output = np.zeros((34, 46, len(files)))
+
+def initialisations(degrees_in_image):
+    image_size = cv2.imread(os.path.join(root, files[0])).shape[:-1]
+    pixels_per_degree = image_size[1]/degrees_in_image # horizontal pixels in output / horizontal degrees (97.84)
+    pixel2PR = int(np.ceil(pixels_per_degree))
+    ds_size = (tuple(int(np.ceil(x/pixel2PR)) for x in image_size))
+    
+    return image_size, ds_size
+
+def matlab_style_gauss2D(shape, sigma):
+    """
+    2D gaussian mask - should give the same result as MATLAB's
+    fspecial('gaussian', [shape], [sigma])
+    """
+    m, n = [(ss-1)/2 for ss in shape]
+    y, x = np.ogrid[-m:m+1, -n:n+1]
+    h = np.exp(-(x**2 + y**2) / (2 * sigma**2))
+    h[h < np.finfo(h.dtype).eps * h.max()] = 0
+    sumh = h.sum()
+    if sumh != 0:
+        h /= sumh
+    return h
+
+def matlab_style_conv2(x, y, mode='same', **kwargs):
+    """
+    should give the same result as MATLAB's
+    conv2(x, y, mode='same') with padding
+    """
+    pad_width = kwargs.pop('pad_width', 0)
+    # Add padding
+    padded = np.pad(x, pad_width=pad_width, mode='reflect')
+    convolved = np.rot90(scipy.signal.convolve2d(np.rot90(padded, 2), np.rot90(y, 2), mode=mode), 2)
+    
+    # Remove padding
+    return convolved[pad_width:-pad_width, pad_width:-pad_width]
+    
+degrees_in_image = 360
+image_size, ds_size = initialisations(degrees_in_image)
+
+# sf = np.zeros((*image_size, len(files)))
+on_f = np.zeros((*ds_size, len(files)))
+off_f = np.zeros(on_f.shape)
+fdsr_on = np.zeros(on_f.shape)
+fdsr_off = np.zeros(on_f.shape)
+delayed_on = np.zeros(on_f.shape)
+delayed_off = np.zeros(on_f.shape)
+ESTMD_Output = np.zeros(on_f.shape)
+RTC_Output = np.zeros(on_f.shape)
+
+bbox_ds = []
 
 """
 Simulation of ESTMD
@@ -137,7 +442,15 @@ Simulation of ESTMD
 
 for t, file in enumerate(files):
     image = cv2.imread(os.path.join(root, file))
-    degrees_in_image = 50
+    
+    if any(x in root for x in [nominal_folder, 'botanic']):
+        # Bounding box params
+        bbox = GT[t]
+        
+        # Image with bounding box
+        image_save = cv2.rectangle(image.copy(), (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 0, 255), 2)
+        number = naming_convention(t+1)
+        # visualise([image_save], folder_name('vid_images'), title=[number])
     
     # Extract green channel from BGR
     green = image[:,:,1]
@@ -146,15 +459,31 @@ for t, file in enumerate(files):
     pixels_per_degree = image_size[1]/degrees_in_image # horizontal pixels in output / horizontal degrees (97.84)
     pixel2PR = int(np.ceil(pixels_per_degree)) # ratio of pixels to photoreceptors in the bio-mimetic model (1 deg spatial sampling... )
     
+    if t < 100 and not any(x in root for x in ['Tuning', nominal_folder, 'botanic']):
+        image_generation(pixels_per_degree, t, mode='height', clutter=None)
+    
     sigma = 1.4 / (2 * np.sqrt(2 * np.log(2)))
     sigma_pixel = sigma * pixels_per_degree # sigma_pixel = (sigma in degrees (0.59))*pixels_per_degree
     kernel_size = int(2 * np.ceil(sigma_pixel))
     
     # Spatial filtered through LPF1
-    sf[:,:,t] = gaussian_filter(green, radius=kernel_size, sigma=sigma_pixel)
+    # Gaussian kernel
+    H = matlab_style_gauss2D(shape=(kernel_size, kernel_size), sigma=sigma_pixel)
+    sf = matlab_style_conv2(green, H, mode='same', pad_width=6)
+    
+    # Scipy's way - Interpolation is too good for puny humans
+    # sf = gaussian_filter(green, radius=kernel_size, sigma=sigma_pixel)
     
     # Downsampled green channel
-    DownsampledGreen = cv2.resize(sf[:,:,t], None, fx=1/pixel2PR, fy=1/pixel2PR, interpolation=cv2.INTER_AREA)
+    # Subsampling vs Downsampling
+    # XXX: Downsampling makes more sense. Check how much the change affects results after everything is working
+    DownsampledGreen = sf[::pixel2PR, ::pixel2PR]
+    # DownsampledGreen = cv2.resize(sf, np.flip(ds_size), interpolation=cv2.INTER_NEAREST)
+    
+    # Downsampled bbox
+    if any(x in root for x in [nominal_folder, 'botanic']):
+        bbox = tuple(map(lambda x: round(x/pixel2PR), bbox))
+        bbox_ds.append(bbox)
     
     try:
         dbuffer1
@@ -162,51 +491,114 @@ for t, file in enumerate(files):
         dbuffer1 = np.zeros((*DownsampledGreen.shape, len(photo_z["b"])))
     
     # Photoreceptor output after temporal band-pass filtering
-    PhotoreceptorOut[:,:,t], dbuffer1 = IIR_Filter(photo_z["b"], photo_z["a"], DownsampledGreen/255, dbuffer1)
+    PhotoreceptorOut, dbuffer1 = IIR_Filter(photo_z["b"], photo_z["a"], DownsampledGreen/255, dbuffer1)
     
     # LMC output after spatial high pass filtering
-    LMC_Out[:,:,t] = signal.convolve2d(PhotoreceptorOut[:,:,t], CSA_KERNEL, boundary='symm', mode='same')
+    LMC_Out = matlab_style_conv2(PhotoreceptorOut, CSA_KERNEL, mode='same', pad_width=2)
     
     # Half-wave rectification
     # Clamp the high pass filtered data to separate the on and off channels
-    on_f[:,:,t] = np.maximum(LMC_Out[:,:,t], 0.0)
-    off_f[:,:,t] = -np.minimum(LMC_Out[:,:,t], 0.0)
+    on_f[:,:,t] = np.maximum(LMC_Out, 0.0)
+    off_f[:,:,t] = -np.minimum(LMC_Out, 0.0)
     
-    # FDSR Implementation
-    if t > 0:
-        k_on = np.where((on_f[:,:,t] - on_f[:,:,t-1]) > 0.01, FDSR_K_FAST, FDSR_K_SLOW)
-        k_off = np.where((off_f[:,:,t] - off_f[:,:,t-1]) > 0.01, FDSR_K_FAST, FDSR_K_SLOW)
+    if t > 0:        
+        # FDSR Implementation
+        k_on = np.where((on_f[:,:,t] - on_f[:,:,t-1]) > 0.01, FDSR_K_FAST_ON, FDSR_K_SLOW)
+        k_off = np.where((off_f[:,:,t] - off_f[:,:,t-1]) > 0.01, FDSR_K_FAST_OFF, FDSR_K_SLOW)
         # Doesn't match Weiderman paper but is the only thing that makes sense
         
         # Apply low-pass filters to on and off channels
         fdsr_on[:,:,t] = ((1.0 - k_on) * on_f[:,:,t]) + (k_on * fdsr_on[:,:,t-1])
         fdsr_off[:,:,t] = ((1.0 - k_off) * off_f[:,:,t]) + (k_off * fdsr_off[:,:,t-1])
         
-        # Subtract FDSR from half-wave rectified 
-        a_on[:,:,t] = (on_f[:,:,t] - fdsr_on[:,:,t]).clip(min=0)
-        a_off[:,:,t] = (off_f[:,:,t] - fdsr_off[:,:,t]).clip(min=0)
+        # Subtract FDSR from half-wave rectified
+        a_on = (on_f[:,:,t] - fdsr_on[:,:,t]).clip(min=0)
+        a_off = (off_f[:,:,t] - fdsr_off[:,:,t]).clip(min=0)
         
         # Inhibition is implemented as spatial filter
         # Not true if this is a chemical synapse as this would require delays
         # Half-wave rectification added
-        on_filtered[:,:,t] = signal.convolve2d(a_on[:,:,t], INHIB_KERNEL, boundary='symm', mode='same').clip(min=0)
-        off_filtered[:,:,t] = signal.convolve2d(a_off[:,:,t], INHIB_KERNEL, boundary='symm', mode='same').clip(min=0)
+        on_filtered = matlab_style_conv2(a_on, INHIB_KERNEL, mode='same', pad_width=4).clip(min=0)
+        off_filtered = matlab_style_conv2(a_off, INHIB_KERNEL, mode='same', pad_width=4).clip(min=0)
+        
+        try:
+            ONbuffer
+            OFFbuffer
+        except NameError:
+            ONbuffer = np.zeros((*on_filtered.shape, len(LPF_5["b"])))
+            OFFbuffer = np.zeros((*off_filtered.shape, len(LPF_5["b"])))
+        
+        # Delayed channels using z-transform
+        On_Delayed_Output, ONbuffer = IIR_Filter(LPF_5["b"], LPF_5["a"], on_filtered, ONbuffer)
+        Off_Delayed_Output, OFFbuffer = IIR_Filter(LPF_5["b"], LPF_5["a"], off_filtered, OFFbuffer)
         
         # Delayed channels for LPF5
-        delayed_on[:,:,t] = ((1.0 - LPF5_K) * on_filtered[:,:,t]) + (LPF5_K * delayed_on[:,:,t-1])
-        delayed_off[:,:,t] = ((1.0 - LPF5_K) * off_filtered[:,:,t]) + (LPF5_K * delayed_off[:,:,t-1])
+        # delayed_on[:,:,t] = ((1.0 - LPF5_K) * on_filtered) + (LPF5_K * delayed_on[:,:,t-1])
+        # delayed_off[:,:,t] = ((1.0 - LPF5_K) * off_filtered) + (LPF5_K * delayed_off[:,:,t-1])
         
         # Correlation between channels
-        Correlate_ON_OFF = on_filtered[:,:,t] * delayed_off[:,:,t]
-        Correlate_OFF_ON = off_filtered[:,:,t] * delayed_on[:,:,t]
+        Correlate_ON_OFF = on_filtered * Off_Delayed_Output # delayed_off[:,:,t]
+        Correlate_OFF_ON = off_filtered * On_Delayed_Output # delayed_on[:,:,t]
+        Correlate_OFF_ON = np.zeros(Correlate_OFF_ON.shape)
         
-        ESTMD_Output[:,:,t] = Correlate_ON_OFF + Correlate_OFF_ON
+        RTC_Output[:,:,t] = (Correlate_ON_OFF + Correlate_OFF_ON) * 6
+        ESTMD_Output[:,:,t] = (RTC_Output[:,:,t] - 0.01).clip(min=0)
+        ESTMD_Output[:,:,t] = np.tanh(ESTMD_Output[:,:,t])
         
-        # RTC
-        RTC_on = on_filtered[:,:,t] + delayed_off[:,:,t]
-        RTC_off = off_filtered[:,:,t] + delayed_on[:,:,t]
+        # HR-Correlator -- EMD
+        try:
+            ON_HR_buffer
+            OFF_HR_buffer
+        except NameError:
+            ON_HR_buffer = np.zeros((*on_f.shape[:-1], len(LPF_HR["b"])))
+            OFF_HR_buffer = np.zeros((*off_f.shape[:-1], len(LPF_HR["b"])))
         
-        RTC_Output[:,:,t] = RTC_on + RTC_off
+        # Delayed channels using z-transform for HR
+        On_HR_Delayed_Output, ON_HR_buffer = IIR_Filter(LPF_HR["b"], LPF_HR["a"], on_f[:,:,t].copy(), ON_HR_buffer)
+        Off_HR_Delayed_Output, OFF_HR_buffer = IIR_Filter(LPF_HR["b"], LPF_HR["a"], off_f[:,:,t].copy(), OFF_HR_buffer)
+        
+        # Correlate delayed channels
+        on_HR = (On_HR_Delayed_Output[:,:-1] * on_f[:,1:,t]) - (on_f[:,:-1,t] * On_HR_Delayed_Output[:,1:])
+        off_HR = (Off_HR_Delayed_Output[:,:-1] * off_f[:,1:,t]) - (off_f[:,:-1,t] * Off_HR_Delayed_Output[:,1:])
+        
+        EMD_Output = (on_HR + off_HR) * 6
+        EMD_Output = (EMD_Output - 0.01).clip(min=0)
+        EMD_Output = np.tanh(EMD_Output)
+
+results_on, results_off = Bagheri_load_results()
+
+success_MATLAB_counter = [[0], [0]]
+success_python_counter = [0]
+
+delay = 10
+success_MATLAB_counter, success_python_counter = metric(bbox_ds, [results_on, results_off], 
+                                                        success_MATLAB_counter, success_python_counter, delay=delay)
+
+total_frames = len(success_python_counter)
+
+if nominal_folder in root:
+    print(nominal_folder, f'{success_MATLAB_counter[0][-1]/total_frames*100}'
+          f'{success_MATLAB_counter[1][-1]/total_frames*100}'
+          f'{success_python_counter[-1]/total_frames*100}')
+ESTMD_delay(ESTMD_Output, bbox_ds, delay=delay)
+
+def success_plots(success_MATLAB_counter, success_python_counter):
+    fig, axes = plt.subplots(figsize=(12,9))
+    MATLAB_titles = ['Facilitation ON - 200 ms', 'Facilitation OFF']
+    for m, counter in enumerate(success_MATLAB_counter):
+        axes.plot(np.asarray(counter)/total_frames * 100, label=MATLAB_titles[m])
+    axes.plot(np.asarray(success_python_counter)/total_frames * 100, label='Python')
+    axes.minorticks_on()
+    axes.yaxis.set_tick_params(which='minor', left=False)
+    axes.set_xlabel('Frames')
+    axes.set_ylabel('Cumululative success rate [%]')
+    axes.legend()
+    
+# success_plots(success_MATLAB_counter, success_python_counter)
+
+# For quick shell script
+# if tuning_folder in root:
+#     print(f'{args.value},{ESTMD_Output[(2,)+indices_of_max_value(ESTMD_Output)]},{indices_of_max_value(ESTMD_Output)[-1]}')
 
 def _RTC(vars, **kwargs):
     # Initialise ragged nested list
@@ -216,26 +608,26 @@ def _RTC(vars, **kwargs):
             for j in range(var_t.shape[-1]):
                 # All values in photoreceptor array should be the same
                 frame = var_t[:,:,j]
-                var_vals[v][i].append(frame[0][0])
+                coord_xy = (np.array(frame.shape)/2).astype(int)
+                # TODO: Find out what is going on in pixel
+                var_vals[v][i].append(frame[coord_xy[0], coord_xy[1]])
             
         fig, ax = plt.subplots(figsize=(12,9))
         for i, val in enumerate(var_vals[v]):
             ax.plot(val)
-        ax.set_xlabel('Time (msec)')
+        ax.set_xlabel('Time [msec]')
         if len(var) > 1:
             ax.legend(labels = ['On', 'Off'])
         ax.get_yaxis().set_visible(False)
         
-        RTC_Out_folder = os.path.join(save_folder, 'RTC_images')
-        os.makedirs(RTC_Out_folder, exist_ok=True)
-
-        save_fig(os.path.join(RTC_Out_folder, kwargs['title'][v]))
+        save_fig(kwargs['title'][v], 'RTC_images')
         
     return var_vals
 
-_RTC([[sf], [PhotoreceptorOut], [LMC_Out], [fdsr_on, fdsr_off], [ESTMD_Output], [RTC_Output], [on_filtered, delayed_off], [delayed_on, off_filtered],
-      [on_f, off_f], [a_on, a_off]], 
-      title=['sf', 'PhotoreceptorOut', 'LMC_Out', 'FDSR', 'ESTMD', 'RTC', 'On_D_OFF', 'Off_D_ON', 'HWR1', 'After FDSR'])
+# if image_folder in root:
+#     _RTC([[sf], [PhotoreceptorOut], [LMC_Out], [fdsr_on, fdsr_off], [ESTMD_Output], [RTC_Output], [on_filtered, delayed_off], 
+#           [delayed_on, off_filtered], [on_f, off_f], [a_on, a_off]], 
+#           title=['sf', 'PhotoreceptorOut', 'LMC_Out', 'FDSR', 'ESTMD', 'RTC', 'On_D_OFF', 'Off_D_ON', 'HWR1', 'After FDSR'])
 
 def continuous(b, a):
     # Difference of Lognormals - Continuous filter
@@ -263,7 +655,35 @@ def continuous(b, a):
 def __plots():
     visualise([image, green, sf, DownsampledGreen, PhotoreceptorOut, LMC_Out, a_on, a_off, on_filtered, off_filtered, ESTMD_Output, RTC_Output], 
               title=['image', 'green', 'sf', 'DownsampledGreen', 'PhotoreceptorOut', 'LMC_Out', 'After FDSR_on', 'After FDSR_off', 
-                     'on_filtered', 'off_filtered', 'ESTMD_Output', 'RTC_Output'])
+                      'on_filtered', 'off_filtered', 'ESTMD_Output', 'RTC_Output'])
+        
+def image2Video(**kwargs):
+    img_array = []
+    if kwargs['video'] == 'images':
+        vid_folder = os.path.join(os.getcwd(), 'Bagheri', folder_name('vid_images'))
+        video_name = folder_name('images')
+    else:
+        vid_folder = os.path.join(os.getcwd(), 'Bagheri', folder_name('vid_ESTMD'))
+        video_name = folder_name('ESTMD')
+    files = [file for file in os.listdir(vid_folder) if file.endswith('.png')]
+    for filename in files:
+        img = cv2.imread(os.path.join(vid_folder, filename))
+        height, width, layers = img.shape
+        size = (width, height)
+        img_array.append(img)
+     
+    out = cv2.VideoWriter(video_name + '.mp4', cv2.VideoWriter_fourcc(*'mp4v'), 20, size)
+     
+    for i in range(len(img_array)):
+        out.write(img_array[i])
+    out.release()
+    
+    # ffmpeg -i left.mp4 -i right.mp4 -filter_complex hstack output.mp4
+    # TODO: Incorporate later into one method
+    # os.system(f"ffmpeg -i {folder_name('images') + '.mp4'} \
+    #           -i {folder_name('ESTMD') + '.mp4'} -filter_complex hstack {folder_name('output') + '.mp4'}")
 
-# continuous(photo_z["b"], photo_z["a"])    
+# continuous(photo_z["b"], photo_z["a"])
 # __plots()
+# image2Video(video='images')
+# image2Video(video='ESTMD')

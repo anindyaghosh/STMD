@@ -1,4 +1,4 @@
-function RTC_Output=RTC(LMC_Output, Ts)
+function RTC_Output=RTC(LMC_Output, Ts, timestep, video_path, Delay)
 
     %Seperating ON and OFF channel
     ON_Channel=LMC_Output>0;
@@ -71,6 +71,14 @@ function RTC_Output=RTC(LMC_Output, Ts)
 
     OFF_Spatial_Dead2=OFF_Spatial_Filtered>0;
     OFF_Spatial_Dead2=OFF_Spatial_Dead2.*OFF_Spatial_Filtered;
+    
+%     if timestep >= (889+Delay) && timestep <= (905+Delay)
+%         image8bit_ON = uint8(255 * mat2gray(ON_Spatial_Dead2));
+%         image8bit_OFF = uint8(255 * mat2gray(OFF_Spatial_Dead2));
+% 
+%         imwrite(image8bit_ON, fullfile(video_path, 'ESTMD_Facil', sprintf("ON_Spatial_%d.png",timestep)))
+%         imwrite(image8bit_OFF, fullfile(video_path, 'ESTMD_Facil', sprintf("OFF_Spatial_%d.png",timestep)))
+%     end
 
     %Lowpass filter each channel
     [m,n]=size(ON_Spatial_Dead2);

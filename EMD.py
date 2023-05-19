@@ -1,5 +1,5 @@
 """
-Adapted from Bagheri, Z.M., Wiederman, S.D., Cazzolato, B.S., Grainger, S. and O’Carroll, D.C., 2017. 
+Adapted from Bagheri, Z.M., Wiederman, S.D., Cazzolato, B.S., Grainger, S. and O'Carroll, D.C., 2017. 
 Performance of an insect-inspired target tracker in natural conditions. Bioinspiration & biomimetics, 12(2), p.025006.
 
 Eichner, H., Joesch, M., Schnell, B., Reiff, D.F. and Borst, A., 2011. 

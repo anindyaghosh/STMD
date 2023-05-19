@@ -11,8 +11,8 @@
 %  information and computing precisions. 
 
 %%%%%%%%%%% path to the videos %%%%%%%%%%%%
-L=26; %video number
-video_path=['C:\Users\ag803\STMD\4496768\STNS1\' num2str(L)];
+L=50; %video number
+video_path=['C:\Users\ag803\STMD\4496768\STNS25\' num2str(L)];
 img_files = dir([video_path '*.png']);
 if isempty(img_files),
     img_files = dir(fullfile(video_path, '*.jpg'));
@@ -29,7 +29,7 @@ for IN=1:nFrames
     Frame=imread(fullfile(video_path, img_files(IN).name));
     dataGreenChannel(:,:,IN)=Frame(:,:,2);
 end  
-load('groundtruth.mat')
+groundtruth = importdata(fullfile(video_path, 'GroundTruth.txt'));
 
 %%%%%%%%%%% Path to the code %%%%%%%%%%%%%%%
 codeDirectory=['C:\Users\ag803\STMD\ACRA_files_2018_and_2019\ACRA2019\Model_script_dev\IIT_Model'];
@@ -38,18 +38,19 @@ cd(codeDirectory)
 %%%%%%%%%%% Set the Parameters %%%%%%%%%%%%
 
 %Center of the target in the first frame
-X_C=100;%(groundtruth(1,1)+groundtruth(1,3)/2);   
-Y_C=50;%groundtruth(1,2)+groundtruth(1,4)/2;  
+X_C=(groundtruth(1,1)+groundtruth(1,3)/2);   
+Y_C=groundtruth(1,2)+groundtruth(1,4)/2;  
 
 %Image size
 image_size_m = size(dataGreenChannel,1) ;                         %number of rows
 image_size_n = size(dataGreenChannel,2);                         %number of columns
-Prompt1='Please enter the horizontal field of view (degrees): ';
-degrees_in_image =input(Prompt1); % Facilitation time constant
-if isempty(degrees_in_image )
-    degrees_in_image = 50;                    %field of view horizontally
-
-end
+degrees_in_image = 50;
+% Prompt1='Please enter the horizontal field of view (degrees): ';
+% degrees_in_image =input(Prompt1); % Facilitation time constant
+% if isempty(degrees_in_image )
+%     degrees_in_image = 50;                    %field of view horizontally
+% 
+% end
 pixels_per_degree = image_size_n/degrees_in_image;                          %pixels_per_degree = #horiz. pixels in output / horizontal degrees (97.84)
 pixel2PR = ceil(pixels_per_degree);                                         %ratio of pixels to photoreceptors in the bio-mimetic model (1 deg spatial sampling...                                                                
 sigma_deg = 1.4/2.35; 
@@ -60,7 +61,7 @@ K1=1:pixel2PR:image_size_m;
 K2=1:pixel2PR:image_size_n;
 YDim=length(K1);
 XDim=length(K2);
-Facilitation_Mode='on';
+Facilitation_Mode='off';
 
 %Initial target location in the subsampled image
 initialCol=ceil(X_C/pixel2PR);
@@ -69,16 +70,17 @@ initialRow=ceil(Y_C/pixel2PR);
 %Facilitation parameters
 Facilitation_sigma=5/2.35482;
 Ts = 0.05; %Sampling time
-Prompt='Please enter the w parameter in Equation 10 to set the facilitation time constant: ';
-wb =input(Prompt); % Facilitation time constant
-if isempty(wb)
-    wb=0.05;
-end
+wb=0.05;
+% Prompt='Please enter the w parameter in Equation 10 to set the facilitation time constant: ';
+% wb =input(Prompt); % Facilitation time constant
+% if isempty(wb)
+%     wb=0.05;
+% end
     
 FacilitationGain =25; %root of facilitation kernel gain
 RC_wb = 5; 
 parameter.RC_fac_wb = 1;
-Threshold = 0.1;
+Threshold = 0.01;
 Facilitation_Matrix=ones(YDim, XDim);
 TargetLocationRow=zeros(nFrames,1);
 TargetLocationCol=zeros(nFrames,1);
@@ -109,8 +111,31 @@ for i=1:nFrames+Delay
    SubSampledGreen=Subsample(opticOut, pixel2PR);
    PR_Output=PhotoReceptor(SubSampledGreen, XDim, YDim);
    LMC_Output=LMC(PR_Output, XDim,YDim);
-   RTC_Output=RTC(LMC_Output, Ts);
+   RTC_Output=RTC(LMC_Output, Ts, i, video_path, Delay);
+   
+%    if i == (889+Delay) || i == (899+Delay)
+%        PR_Outim = uint8(255 * mat2gray(PR_Output));
+%        LMC_Outim = uint8(255 * mat2gray(LMC_Output));
+% 
+%        imwrite(opticOut/255, fullfile(video_path, 'ESTMD_Facil', sprintf("OpticOut_%d.png",i)))
+%        imwrite(SubSampledGreen/255, fullfile(video_path, 'ESTMD_Facil', sprintf("SubSamGreen_%d.png",i)))
+%        imwrite(PR_Outim, fullfile(video_path, 'ESTMD_Facil', sprintf("PR_%d.png",i)))
+%        imwrite(LMC_Outim, fullfile(video_path, 'ESTMD_Facil', sprintf("LMC_%d.png",i)))
+%    end
+   
    ESTMD_OUT=ESTMD(RTC_Output, Facilitation_Matrix, Facilitation_Mode, start, Threshold); 
+%    if i >= (889+Delay) && i <= (930+Delay)
+%        image8bit = uint8(255 * mat2gray(RTC_Output));
+%        imwrite(image8bit, fullfile(video_path, 'ESTMD_Facil', sprintf("RTC_%d.png",i)))
+%        
+%        image8bitESTMD = uint8(255 * mat2gray(ESTMD_OUT));
+%        imwrite(image8bitESTMD, fullfile(video_path, 'ESTMD_Facil', sprintf("ESTMD_%d.png",i)))
+%    end
+
+%    if i >= Delay
+%         image8bitESTMD = uint8(255 * mat2gray(ESTMD_OUT));
+%         imwrite(image8bitESTMD, fullfile(video_path, 'ESTMD_Facil', sprintf("ESTMD_%d.png",i-Delay)))
+%    end
    [Direction_Horizontal,Direction_Vertical]=Direction(ESTMD_OUT,  RC_wb, Ts,XDim, YDim);
    [ col_index, row_index] = Target_Location(ESTMD_OUT, YDim);
    [default, col_index2,row_index2] = Velocity_Vector(test, col_index, row_index,Direction_Horizontal,Direction_Vertical, XDim);
@@ -133,7 +158,7 @@ for i=1:nFrames+Delay
    framePTime(i)=tFrame;
    blurPTime(i)=tBlur; 
 end
-directory1=[video_path '\results'];   
+directory1=fullfile(video_path, sprintf('results_Facil_%s', Facilitation_Mode));   
 
 mkdir(directory1)
 cd(directory1)
