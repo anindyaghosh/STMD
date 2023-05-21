@@ -545,25 +545,45 @@ for t, file in enumerate(files):
         ESTMD_Output[:,:,t] = (RTC_Output[:,:,t] - 0.01).clip(min=0)
         ESTMD_Output[:,:,t] = np.tanh(ESTMD_Output[:,:,t])
         
-        # HR-Correlator -- EMD
+        # HR-Correlator -- EMD - right preferred direction
         try:
-            ON_HR_buffer
-            OFF_HR_buffer
+            ON_HR_buffer_right
+            OFF_HR_buffer_right
         except NameError:
-            ON_HR_buffer = np.zeros((*on_f.shape[:-1], len(LPF_HR["b"])))
-            OFF_HR_buffer = np.zeros((*off_f.shape[:-1], len(LPF_HR["b"])))
+            ON_HR_buffer_right = np.zeros((*on_f.shape[:-1], len(LPF_HR["b"])))
+            OFF_HR_buffer_right = np.zeros((*off_f.shape[:-1], len(LPF_HR["b"])))
         
         # Delayed channels using z-transform for HR
-        On_HR_Delayed_Output, ON_HR_buffer = IIR_Filter(LPF_HR["b"], LPF_HR["a"], on_f[:,:,t].copy(), ON_HR_buffer)
-        Off_HR_Delayed_Output, OFF_HR_buffer = IIR_Filter(LPF_HR["b"], LPF_HR["a"], off_f[:,:,t].copy(), OFF_HR_buffer)
+        On_HR_Delayed_Output_right, ON_HR_buffer_right = IIR_Filter(LPF_HR["b"], LPF_HR["a"], on_f[:,:,t].copy(), ON_HR_buffer_right)
+        Off_HR_Delayed_Output_right, OFF_HR_buffer_right = IIR_Filter(LPF_HR["b"], LPF_HR["a"], off_f[:,:,t].copy(), OFF_HR_buffer_right)
         
         # Correlate delayed channels
-        on_HR = (On_HR_Delayed_Output[:,:-1] * on_f[:,1:,t]) - (on_f[:,:-1,t] * On_HR_Delayed_Output[:,1:])
-        off_HR = (Off_HR_Delayed_Output[:,:-1] * off_f[:,1:,t]) - (off_f[:,:-1,t] * Off_HR_Delayed_Output[:,1:])
+        on_HR_right = (On_HR_Delayed_Output_right[:,:-1] * on_f[:,1:,t]) - (on_f[:,:-1,t] * On_HR_Delayed_Output_right[:,1:])
+        off_HR_right = (Off_HR_Delayed_Output_right[:,:-1] * off_f[:,1:,t]) - (off_f[:,:-1,t] * Off_HR_Delayed_Output_right[:,1:])
         
-        EMD_Output = (on_HR + off_HR) * 6
-        EMD_Output = (EMD_Output - 0.01).clip(min=0)
-        EMD_Output = np.tanh(EMD_Output)
+        EMD_Output_right = (on_HR_right + off_HR_right) * 6
+        EMD_Output_right = (EMD_Output_right - 0.01).clip(min=0)
+        EMD_Output_right = np.tanh(EMD_Output_right)
+        
+        # HR-Correlator -- EMD - up preferred direction
+        try:
+            ON_HR_buffer_up
+            OFF_HR_buffer_up
+        except NameError:
+            ON_HR_buffer_up = np.zeros((*on_f.shape[:-1], len(LPF_HR["b"])))
+            OFF_HR_buffer_up = np.zeros((*off_f.shape[:-1], len(LPF_HR["b"])))
+        
+        # Delayed channels using z-transform for HR
+        On_HR_Delayed_Output_up, ON_HR_buffer_up = IIR_Filter(LPF_HR["b"], LPF_HR["a"], on_f[:,:,t].copy(), ON_HR_buffer_up)
+        Off_HR_Delayed_Output_up, OFF_HR_buffer_up = IIR_Filter(LPF_HR["b"], LPF_HR["a"], off_f[:,:,t].copy(), OFF_HR_buffer_up)
+        
+        # Correlate delayed channels
+        on_HR_up = (On_HR_Delayed_Output_up[:-1,:] * on_f[1:,:,t]) - (on_f[:-1,:,t] * On_HR_Delayed_Output_up[1:,:])
+        off_HR_up = (Off_HR_Delayed_Output_up[:-1,:] * off_f[1:,:,t]) - (off_f[:-1,:,t] * Off_HR_Delayed_Output_up[1:,:])
+        
+        EMD_Output_up = (on_HR_up + off_HR_up) * 6
+        EMD_Output_up = (EMD_Output_up - 0.01).clip(min=0)
+        EMD_Output_up = np.tanh(EMD_Output_up)
 
 results_on, results_off = Bagheri_load_results()
 
