@@ -560,7 +560,7 @@ for t, file in enumerate(files):
         # Correlate delayed channels
         on_HR_right = (On_HR_Delayed_Output_right[:,:-1] * on_f[:,1:,t]) - (on_f[:,:-1,t] * On_HR_Delayed_Output_right[:,1:])
         off_HR_right = (Off_HR_Delayed_Output_right[:,:-1] * off_f[:,1:,t]) - (off_f[:,:-1,t] * Off_HR_Delayed_Output_right[:,1:])
-        
+
         EMD_Output_right = (on_HR_right + off_HR_right) * 6
         EMD_Output_right = (EMD_Output_right - 0.01).clip(min=0)
         EMD_Output_right = np.tanh(EMD_Output_right)
