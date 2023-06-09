@@ -64,13 +64,14 @@ nominal_folder = '4496768/STNS3/28' # args.nominal_folder.rstrip() # '4496768/ST
 image_folder = 'Bagheri/images'
 tuning_folder = 'Bagheri/Tuning'
 botanic_folder = 'Bagheri/botanic'
-root = os.path.join(os.getcwd(), botanic_folder) # Has to change between image_folder and tuning_folder for tuning experiments
+EMD_folder = 'Bagheri/EMD'
+root = os.path.join(os.getcwd(), EMD_folder) # Has to change between image_folder and tuning_folder for tuning experiments
 # Acceptable image file extensions
 exts = ['.jpg', '.png']
 files = [file for file in os.listdir(root) if (file.endswith(tuple(exts)) and 'IMG' in file)]
 
 # Obtain ground truths
-if any(x in root for x in [nominal_folder, 'botanic']):
+if any(x in root for x in [nominal_folder, 'botanic', 'EMD']):
     with open(os.path.join(root, 'GroundTruth.txt')) as groundTruth:
         GT = []
         for line in groundTruth:
@@ -125,6 +126,58 @@ INHIB_KERNEL = np.array([[-1, -1, -1, -1, -1],
 #                           [-1, -1, -1, -1, -1],
 #                           [-1, -1, -1, -1, -1]])
 
+def create_EMD_tests():
+    # image = naturalistic_noise.fourier()
+    # image = cv2.imread('fourier.png')
+    # image = cv2.imread('RandomImageLarge.png')
+    image = cv2.imread('sparse_field.png')
+    image = cv2.blur(image, (5,5))
+    
+    bg_dims = image[1000:1400,2000:4594].copy()
+    
+    # Target size definitions
+    pixels_per_degree = bg_dims.shape[1]/360
+    target_size = round(2.8 * pixels_per_degree) # 2.8 degrees is optimal target size
+    start = (1125, 250)
+    
+    # Adjust starting row
+    lst = list(start)
+    lst[0] -= 1000
+    start = tuple(lst)
+    
+    # Calculate velocity of image
+    velocity = (120/1000) * pixels_per_degree # 120 degrees/second gives optimal latency of 33 ms in desired response range
+    velocity *= (Ts*1000) # Sample every 1 timestep (ms)
+    
+    # image = np.ones(image.shape) * 255
+    
+    # image[start[0]:start[0]+target_size, start[1]:start[1]+target_size] = 0
+    
+    with open(os.path.join(root, 'GroundTruth.txt'), 'w') as f:
+        for timestep in range(100):
+            # Roll image by specific time
+            image = np.roll(image, -round(velocity), axis=1)
+            
+            # Crop to save memory and increase computation speed
+            bg = image[1000:1400,2000:4594].copy()
+            
+            bg[start[0]:start[0]+target_size, 
+                start[1]+round(velocity)*timestep:start[1]+target_size+round(velocity)*timestep] = 0
+            
+            cv2.imwrite(os.path.join(EMD_folder, naming_convention(timestep+1) + '.png'), bg)
+            
+            x, y = start[0], start[1]+round(velocity)*timestep # start[0]+target_size, start[1]+round(velocity)*timestep
+            # Adjust for roll
+            if y >= image.shape[1]:
+                y -= image.shape[1]
+                
+            f.write(f'{y},{x},{target_size},{target_size}')
+            f.write('\n')
+        f.close()
+    
+if EMD_folder in root:
+    create_EMD_tests()
+
 # Wiederman (2008)
 def create_botanic_panorama():
     image = cv2.imread(os.path.join(botanic_folder, 'HDR_Botanic_RGB_lin.tif'))
@@ -134,7 +187,7 @@ def create_botanic_panorama():
     target_size = round(2.8 * pixels_per_degree) # 2.8 degrees is optimal target size
     start = (205, 1225) # 770
     
-    image[start[0]:start[0]+target_size, start[1]:start[1]+target_size,:] = 0
+    # image[start[0]:start[0]+target_size, start[1]:start[1]+target_size,:] = 0
     
     # Calculate velocity of image
     velocity = (120/1000) * pixels_per_degree # 120 degrees/second gives optimal latency of 33 ms in desired response range
@@ -238,7 +291,8 @@ def tuning_plots(mode):
     #     col = np.argwhere(tuning_array == 300)[0][1]
     #     axes.plot(tuning_array[0,col], tuning_array[1,col], 'k*', markersize=10)
     #     ax2.plot(tuning_array[0,col], tuning_array[2,col], 'k*', markersize=10)
-    axes.set_xscale('log')
+    if mode == 'velocity':
+        axes.set_xscale('log')
     axes.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: '{:g}'.format(x)))
     axes.set_xlabel(label)
     axes.set_ylabel('ESTMD Response (normalised)')
@@ -436,6 +490,8 @@ RTC_Output = np.zeros(on_f.shape)
 
 bbox_ds = []
 
+delay = 10
+
 """
 Simulation of ESTMD
 """
@@ -443,14 +499,15 @@ Simulation of ESTMD
 for t, file in enumerate(files):
     image = cv2.imread(os.path.join(root, file))
     
-    if any(x in root for x in [nominal_folder, 'botanic']):
+    if any(x in root for x in [nominal_folder, 'botanic', 'EMD']):
         # Bounding box params
         bbox = GT[t]
         
         # Image with bounding box
-        image_save = cv2.rectangle(image.copy(), (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 0, 255), 2)
-        number = naming_convention(t+1)
-        # visualise([image_save], folder_name('vid_images'), title=[number])
+        if t < len(files) - delay:
+            image_save = cv2.rectangle(image.copy(), (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 0, 255), 2)
+            number = naming_convention(t+1)
+            # visualise([image_save], folder_name('vid_images'), title=[number])
     
     # Extract green channel from BGR
     green = image[:,:,1]
@@ -459,7 +516,7 @@ for t, file in enumerate(files):
     pixels_per_degree = image_size[1]/degrees_in_image # horizontal pixels in output / horizontal degrees (97.84)
     pixel2PR = int(np.ceil(pixels_per_degree)) # ratio of pixels to photoreceptors in the bio-mimetic model (1 deg spatial sampling... )
     
-    if t < 100 and not any(x in root for x in ['Tuning', nominal_folder, 'botanic']):
+    if t < 100 and not any(x in root for x in ['Tuning', nominal_folder, 'botanic', 'EMD']):
         image_generation(pixels_per_degree, t, mode='height', clutter=None)
     
     sigma = 1.4 / (2 * np.sqrt(2 * np.log(2)))
@@ -481,7 +538,7 @@ for t, file in enumerate(files):
     # DownsampledGreen = cv2.resize(sf, np.flip(ds_size), interpolation=cv2.INTER_NEAREST)
     
     # Downsampled bbox
-    if any(x in root for x in [nominal_folder, 'botanic']):
+    if any(x in root for x in [nominal_folder, 'botanic', 'EMD']):
         bbox = tuple(map(lambda x: round(x/pixel2PR), bbox))
         bbox_ds.append(bbox)
     
@@ -501,7 +558,7 @@ for t, file in enumerate(files):
     on_f[:,:,t] = np.maximum(LMC_Out, 0.0)
     off_f[:,:,t] = -np.minimum(LMC_Out, 0.0)
     
-    if t > 0:        
+    if t > 0:
         # FDSR Implementation
         k_on = np.where((on_f[:,:,t] - on_f[:,:,t-1]) > 0.01, FDSR_K_FAST_ON, FDSR_K_SLOW)
         k_off = np.where((off_f[:,:,t] - off_f[:,:,t-1]) > 0.01, FDSR_K_FAST_OFF, FDSR_K_SLOW)
@@ -545,62 +602,92 @@ for t, file in enumerate(files):
         ESTMD_Output[:,:,t] = (RTC_Output[:,:,t] - 0.01).clip(min=0)
         ESTMD_Output[:,:,t] = np.tanh(ESTMD_Output[:,:,t])
         
-        # HR-Correlator -- EMD - right preferred direction
-        try:
-            ON_HR_buffer_right
-            OFF_HR_buffer_right
-        except NameError:
-            ON_HR_buffer_right = np.zeros((*on_f.shape[:-1], len(LPF_HR["b"])))
-            OFF_HR_buffer_right = np.zeros((*off_f.shape[:-1], len(LPF_HR["b"])))
-        
-        # Delayed channels using z-transform for HR
-        On_HR_Delayed_Output_right, ON_HR_buffer_right = IIR_Filter(LPF_HR["b"], LPF_HR["a"], on_f[:,:,t].copy(), ON_HR_buffer_right)
-        Off_HR_Delayed_Output_right, OFF_HR_buffer_right = IIR_Filter(LPF_HR["b"], LPF_HR["a"], off_f[:,:,t].copy(), OFF_HR_buffer_right)
-        
-        # Correlate delayed channels
-        on_HR_right = (On_HR_Delayed_Output_right[:,:-1] * on_f[:,1:,t]) - (on_f[:,:-1,t] * On_HR_Delayed_Output_right[:,1:])
-        off_HR_right = (Off_HR_Delayed_Output_right[:,:-1] * off_f[:,1:,t]) - (off_f[:,:-1,t] * Off_HR_Delayed_Output_right[:,1:])
+    """
+    ESTMD -> EMD -- Directionally selective STMD
+    """
+    # TODO: Just moving right for the meantime
+    try:
+        EHR_buffer_right
+    except NameError:
+        EHR_buffer_right = np.zeros((*ESTMD_Output.shape[:-1], len(LPF_HR["b"])))
+    
+    # Delayed channels using z-transform for HR
+    EHR_Delayed_Output_right, EHR_buffer_right = IIR_Filter(LPF_HR["b"], LPF_HR["a"], ESTMD_Output[:,:,t].copy(), EHR_buffer_right)
+    
+    # Correlate delayed channels
+    EHR_right = (EHR_Delayed_Output_right[:,:-1] * ESTMD_Output[:,1:,t]) - (ESTMD_Output[:,:-1,t] * EHR_Delayed_Output_right[:,1:])
+    
+    # Half-wave rectification
+    EHR_R = np.maximum(EHR_right, 0.0)
+    EHR_L = -np.minimum(EHR_right, 0.0)
+    
+    # Spatially pool d-STMD
+    
+    
+    """
+    Wide-field EMD
+    """
+    
+    # HR-Correlator -- EMD - right preferred direction
+    try:
+        ON_HR_buffer_right
+        OFF_HR_buffer_right
+    except NameError:
+        ON_HR_buffer_right = np.zeros((*on_f.shape[:-1], len(LPF_HR["b"])))
+        OFF_HR_buffer_right = np.zeros((*off_f.shape[:-1], len(LPF_HR["b"])))
+    
+    # Delayed channels using z-transform for HR
+    On_HR_Delayed_Output_right, ON_HR_buffer_right = IIR_Filter(LPF_HR["b"], LPF_HR["a"], on_f[:,:,t].copy(), ON_HR_buffer_right)
+    Off_HR_Delayed_Output_right, OFF_HR_buffer_right = IIR_Filter(LPF_HR["b"], LPF_HR["a"], off_f[:,:,t].copy(), OFF_HR_buffer_right)
+    
+    # Correlate delayed channels
+    on_HR_right = (On_HR_Delayed_Output_right[:,:-1] * on_f[:,1:,t]) - (on_f[:,:-1,t] * On_HR_Delayed_Output_right[:,1:])
+    off_HR_right = (Off_HR_Delayed_Output_right[:,:-1] * off_f[:,1:,t]) - (off_f[:,:-1,t] * Off_HR_Delayed_Output_right[:,1:])
 
-        EMD_Output_right = (on_HR_right + off_HR_right) * 6
-        EMD_Output_right = (EMD_Output_right - 0.01).clip(min=0)
-        EMD_Output_right = np.tanh(EMD_Output_right)
-        
-        # HR-Correlator -- EMD - up preferred direction
-        try:
-            ON_HR_buffer_up
-            OFF_HR_buffer_up
-        except NameError:
-            ON_HR_buffer_up = np.zeros((*on_f.shape[:-1], len(LPF_HR["b"])))
-            OFF_HR_buffer_up = np.zeros((*off_f.shape[:-1], len(LPF_HR["b"])))
-        
-        # Delayed channels using z-transform for HR
-        On_HR_Delayed_Output_up, ON_HR_buffer_up = IIR_Filter(LPF_HR["b"], LPF_HR["a"], on_f[:,:,t].copy(), ON_HR_buffer_up)
-        Off_HR_Delayed_Output_up, OFF_HR_buffer_up = IIR_Filter(LPF_HR["b"], LPF_HR["a"], off_f[:,:,t].copy(), OFF_HR_buffer_up)
-        
-        # Correlate delayed channels
-        on_HR_up = (On_HR_Delayed_Output_up[:-1,:] * on_f[1:,:,t]) - (on_f[:-1,:,t] * On_HR_Delayed_Output_up[1:,:])
-        off_HR_up = (Off_HR_Delayed_Output_up[:-1,:] * off_f[1:,:,t]) - (off_f[:-1,:,t] * Off_HR_Delayed_Output_up[1:,:])
-        
-        EMD_Output_up = (on_HR_up + off_HR_up) * 6
-        EMD_Output_up = (EMD_Output_up - 0.01).clip(min=0)
-        EMD_Output_up = np.tanh(EMD_Output_up)
-
+    # EMD_Output_right = (on_HR_right + off_HR_right) * 6
+    EMD_Output_right = (off_HR_right) * 6
+    EMD_Output_right[np.abs(EMD_Output_right) < 0.1] = 0
+    EMD_Output_right = np.tanh(EMD_Output_right)
+    
+    # HR-Correlator -- EMD - down preferred direction
+    try:
+        ON_HR_buffer_down
+        OFF_HR_buffer_down
+    except NameError:
+        ON_HR_buffer_down = np.zeros((*on_f.shape[:-1], len(LPF_HR["b"])))
+        OFF_HR_buffer_down = np.zeros((*off_f.shape[:-1], len(LPF_HR["b"])))
+    
+    # Delayed channels using z-transform for HR
+    On_HR_Delayed_Output_down, ON_HR_buffer_down = IIR_Filter(LPF_HR["b"], LPF_HR["a"], on_f[:,:,t].copy(), ON_HR_buffer_down)
+    Off_HR_Delayed_Output_down, OFF_HR_buffer_down = IIR_Filter(LPF_HR["b"], LPF_HR["a"], off_f[:,:,t].copy(), OFF_HR_buffer_down)
+    
+    # Correlate delayed channels
+    on_HR_down = (On_HR_Delayed_Output_down[:-1,:] * on_f[1:,:,t]) - (on_f[:-1,:,t] * On_HR_Delayed_Output_down[1:,:])
+    off_HR_down = (Off_HR_Delayed_Output_down[:-1,:] * off_f[1:,:,t]) - (off_f[:-1,:,t] * Off_HR_Delayed_Output_down[1:,:])
+    
+    # EMD_Output_down = (on_HR_down + off_HR_down) * 6
+    EMD_Output_down = (off_HR_down) * 6
+    EMD_Output_down[np.abs(EMD_Output_down) < 0.1] = 0
+    EMD_Output_down = np.tanh(EMD_Output_down)
+    
+print(f'{t},{np.sum(ESTMD_Output[:,:,-1])}')
+print(f'{t},{np.sum(EMD_Output_right)},{np.sum(EMD_Output_down)}')
+    
 results_on, results_off = Bagheri_load_results()
 
 success_MATLAB_counter = [[0], [0]]
 success_python_counter = [0]
 
-delay = 10
 success_MATLAB_counter, success_python_counter = metric(bbox_ds, [results_on, results_off], 
                                                         success_MATLAB_counter, success_python_counter, delay=delay)
 
 total_frames = len(success_python_counter)
 
 if nominal_folder in root:
-    print(nominal_folder, f'{success_MATLAB_counter[0][-1]/total_frames*100}'
-          f'{success_MATLAB_counter[1][-1]/total_frames*100}'
+    print(nominal_folder, f'{success_MATLAB_counter[0][-1]/total_frames*100},'
+          f'{success_MATLAB_counter[1][-1]/total_frames*100},'
           f'{success_python_counter[-1]/total_frames*100}')
-ESTMD_delay(ESTMD_Output, bbox_ds, delay=delay)
+# ESTMD_delay(ESTMD_Output, bbox_ds, delay=delay)
 
 def success_plots(success_MATLAB_counter, success_python_counter):
     fig, axes = plt.subplots(figsize=(12,9))
@@ -611,7 +698,7 @@ def success_plots(success_MATLAB_counter, success_python_counter):
     axes.minorticks_on()
     axes.yaxis.set_tick_params(which='minor', left=False)
     axes.set_xlabel('Frames')
-    axes.set_ylabel('Cumululative success rate [%]')
+    axes.set_ylabel('Success rate [%]')
     axes.legend()
     
 # success_plots(success_MATLAB_counter, success_python_counter)
