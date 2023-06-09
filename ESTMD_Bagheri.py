@@ -622,7 +622,9 @@ for t, file in enumerate(files):
     EHR_L = -np.minimum(EHR_right, 0.0)
     
     # Spatially pool d-STMD
+    STMD_sp = np.array([np.sum(EHR_R), np.sum(EHR_L)])
     
+    #TODO: Add receptive fields for d-STMD
     
     """
     Wide-field EMD
@@ -669,6 +671,12 @@ for t, file in enumerate(files):
     EMD_Output_down = (off_HR_down) * 6
     EMD_Output_down[np.abs(EMD_Output_down) < 0.1] = 0
     EMD_Output_down = np.tanh(EMD_Output_down)
+    
+    EMD_Output_R = np.maximum(EMD_Output_right, 0.0)
+    EMD_Output_L = -np.minimum(EMD_Output_right, 0.0)
+    
+    # Spatially pool EMD
+    EMD_sp = np.array([np.sum(EMD_Output_R), np.sum(EMD_Output_L)])
     
 print(f'{t},{np.sum(ESTMD_Output[:,:,-1])}')
 print(f'{t},{np.sum(EMD_Output_right)},{np.sum(EMD_Output_down)}')
