@@ -32,6 +32,8 @@ def visualise(vars, sub_folder=None, **kwargs):
         fig, axes = plt.subplots(figsize=(48,36))
         if len(var.shape) > 2 and not var.shape[-1] == 3:
             axes.imshow(var[:,:,-1])
+        elif len(var.shape) == 2:
+            axes.imshow(var, cmap='gray')
         else:
             var = cv2.cvtColor(var, cv2.COLOR_BGR2RGB)
             axes.imshow(var)
@@ -156,7 +158,7 @@ def create_EMD_tests():
     with open(os.path.join(root, 'GroundTruth.txt'), 'w') as f:
         for timestep in range(100):
             # Roll image by specific time
-            image = np.roll(image, -round(velocity), axis=1)
+            # image = np.roll(image, -round(velocity), axis=1)
             
             # Crop to save memory and increase computation speed
             bg = image[1000:1400,2000:4594].copy()
@@ -187,7 +189,7 @@ def create_botanic_panorama():
     target_size = round(2.8 * pixels_per_degree) # 2.8 degrees is optimal target size
     start = (205, 1225) # 770
     
-    # image[start[0]:start[0]+target_size, start[1]:start[1]+target_size,:] = 0
+    image[start[0]:start[0]+target_size, start[1]:start[1]+target_size,:] = 0
     
     # Calculate velocity of image
     velocity = (120/1000) * pixels_per_degree # 120 degrees/second gives optimal latency of 33 ms in desired response range
@@ -249,7 +251,7 @@ def image_generation(pixels_per_degree, timestep, mode=None, clutter=None):
     os.makedirs(save_dir, exist_ok=True)
     cv2.imwrite(os.path.join(save_dir, naming_convention(timestep+1) + '.png'), images)
 
-def indices_of_max_value(arr):    
+def indices_of_max_value(arr):
     # Used to find indices of max value in array (ESTMD_Output)
     # Target in second row
     arr_sub = arr[2,:,:]
@@ -495,7 +497,6 @@ delay = 10
 """
 Simulation of ESTMD
 """
-
 for t, file in enumerate(files):
     image = cv2.imread(os.path.join(root, file))
     
@@ -621,8 +622,16 @@ for t, file in enumerate(files):
     EHR_R = np.maximum(EHR_right, 0.0)
     EHR_L = -np.minimum(EHR_right, 0.0)
     
+    if t < len(files) - delay:
+        number = naming_convention(t+1)
+        # visualise([EHR_R], folder_name('vid_EHR_R'), title=[number])
+        # visualise([EHR_L], folder_name('vid_EHR_L'), title=[number])
+    
     # Spatially pool d-STMD
     STMD_sp = np.array([np.sum(EHR_R), np.sum(EHR_L)])
+    STMD_sp_sum = np.sum([np.sum(EHR_R), np.sum(EHR_L)])
+    
+    #TODO: Plots of cardinal direction STMDs, sum of STMDs compared with EMDS
     
     #TODO: Add receptive fields for d-STMD
     
@@ -645,9 +654,9 @@ for t, file in enumerate(files):
     # Correlate delayed channels
     on_HR_right = (On_HR_Delayed_Output_right[:,:-1] * on_f[:,1:,t]) - (on_f[:,:-1,t] * On_HR_Delayed_Output_right[:,1:])
     off_HR_right = (Off_HR_Delayed_Output_right[:,:-1] * off_f[:,1:,t]) - (off_f[:,:-1,t] * Off_HR_Delayed_Output_right[:,1:])
-
+    
     # EMD_Output_right = (on_HR_right + off_HR_right) * 6
-    EMD_Output_right = (off_HR_right) * 6
+    EMD_Output_right = off_HR_right * 6
     EMD_Output_right[np.abs(EMD_Output_right) < 0.1] = 0
     EMD_Output_right = np.tanh(EMD_Output_right)
     
@@ -668,7 +677,7 @@ for t, file in enumerate(files):
     off_HR_down = (Off_HR_Delayed_Output_down[:-1,:] * off_f[1:,:,t]) - (off_f[:-1,:,t] * Off_HR_Delayed_Output_down[1:,:])
     
     # EMD_Output_down = (on_HR_down + off_HR_down) * 6
-    EMD_Output_down = (off_HR_down) * 6
+    EMD_Output_down = off_HR_down * 6
     EMD_Output_down[np.abs(EMD_Output_down) < 0.1] = 0
     EMD_Output_down = np.tanh(EMD_Output_down)
     
@@ -772,21 +781,17 @@ def __plots():
               title=['image', 'green', 'sf', 'DownsampledGreen', 'PhotoreceptorOut', 'LMC_Out', 'After FDSR_on', 'After FDSR_off', 
                       'on_filtered', 'off_filtered', 'ESTMD_Output', 'RTC_Output'])
         
-def image2Video(**kwargs):
+def image2Video(layer_name):
     img_array = []
-    if kwargs['video'] == 'images':
-        vid_folder = os.path.join(os.getcwd(), 'Bagheri', folder_name('vid_images'))
-        video_name = folder_name('images')
-    else:
-        vid_folder = os.path.join(os.getcwd(), 'Bagheri', folder_name('vid_ESTMD'))
-        video_name = folder_name('ESTMD')
+    vid_folder = os.path.join(os.getcwd(), 'Bagheri', folder_name('_'.join(['vid', layer_name])))
+    video_name = folder_name(layer_name)
     files = [file for file in os.listdir(vid_folder) if file.endswith('.png')]
     for filename in files:
         img = cv2.imread(os.path.join(vid_folder, filename))
         height, width, layers = img.shape
         size = (width, height)
         img_array.append(img)
-     
+        
     out = cv2.VideoWriter(video_name + '.mp4', cv2.VideoWriter_fourcc(*'mp4v'), 20, size)
      
     for i in range(len(img_array)):
@@ -794,11 +799,13 @@ def image2Video(**kwargs):
     out.release()
     
     # ffmpeg -i left.mp4 -i right.mp4 -filter_complex hstack output.mp4
-    # TODO: Incorporate later into one method
+    """For adding coloured padding in vstack
+    ffmpeg -i output_EMD.mp4 -i dSTMD_output.mp4 -filter_complex 
+    "[1]pad=iw:ih+5:0:5:color=white[v1];[0][v1]vstack=inputs=2" dSTMD_output_all.mp4"""
     # os.system(f"ffmpeg -i {folder_name('images') + '.mp4'} \
     #           -i {folder_name('ESTMD') + '.mp4'} -filter_complex hstack {folder_name('output') + '.mp4'}")
 
 # continuous(photo_z["b"], photo_z["a"])
 # __plots()
-# image2Video(video='images')
-# image2Video(video='ESTMD')
+# image2Video(images')
+# image2Video('ESTMD')
