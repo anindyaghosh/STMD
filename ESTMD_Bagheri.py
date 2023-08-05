@@ -11,6 +11,7 @@ import scipy.io
 import time
 
 import naturalistic_noise
+import receptive_fields_parametrised as rf
 
 """
 Helper functions
