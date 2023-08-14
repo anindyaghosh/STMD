@@ -11,7 +11,7 @@ import scipy.io
 import time
 
 import naturalistic_noise
-import receptive_fields_parametrised as rf
+from receptive_fields_parametrised import receptive_fields as rf
 
 """
 Helper functions
@@ -140,6 +140,11 @@ def create_EMD_tests():
     
     # Target size definitions
     pixels_per_degree = bg_dims.shape[1]/360
+    
+    # Conforming to desired visual field
+    desired_resolution = (138, 155)
+    pixels_to_keep = (np.array(desired_resolution) * pixels_per_degree).astype(int)
+    
     target_size = round(2.8 * pixels_per_degree) # 2.8 degrees is optimal target size
     start = (1125, 250)
     
@@ -162,7 +167,8 @@ def create_EMD_tests():
             # image = np.roll(image, -round(velocity), axis=1)
             
             # Crop to save memory and increase computation speed
-            bg = image[1000:1400,2000:4594].copy()
+            # bg = image[1000:1400,2000:4594].copy()
+            bg = image[1000:1000 + pixels_to_keep[0], 2000:2000 + pixels_to_keep[1]].copy()
             
             bg[start[0]:start[0]+target_size, 
                 start[1]+round(velocity)*timestep:start[1]+target_size+round(velocity)*timestep] = 0
@@ -177,9 +183,12 @@ def create_EMD_tests():
             f.write(f'{y},{x},{target_size},{target_size}')
             f.write('\n')
         f.close()
+        
+    return pixels_to_keep
     
 if EMD_folder in root:
-    create_EMD_tests()
+    pixels_to_keep = create_EMD_tests()
+    vf = rf(pixels_to_keep).run()
 
 # Wiederman (2008)
 def create_botanic_panorama():
@@ -525,6 +534,9 @@ for t, file in enumerate(files):
     sigma_pixel = sigma * pixels_per_degree # sigma_pixel = (sigma in degrees (0.59))*pixels_per_degree
     kernel_size = int(2 * np.ceil(sigma_pixel))
     
+    """Downsampling receptive fields"""
+    Downsampledvf = cv2.resize(vf, np.flip(ds_size), interpolation=cv2.INTER_NEAREST)
+    
     # Spatial filtered through LPF1
     # Gaussian kernel
     H = matlab_style_gauss2D(shape=(kernel_size, kernel_size), sigma=sigma_pixel)
@@ -620,12 +632,12 @@ for t, file in enumerate(files):
     EHR_right = (EHR_Delayed_Output_right[:,:-1] * ESTMD_Output[:,1:,t]) - (ESTMD_Output[:,:-1,t] * EHR_Delayed_Output_right[:,1:])
     
     # Half-wave rectification
-    EHR_R = np.maximum(EHR_right, 0.0)
-    EHR_L = -np.minimum(EHR_right, 0.0)
+    EHR_R = np.maximum(EHR_right, 0.0) * Downsampledvf[:,:-1,1]
+    EHR_L = -np.minimum(EHR_right, 0.0) * Downsampledvf[:,:-1,1]
     
     if t < len(files) - delay:
         number = naming_convention(t+1)
-        # visualise([EHR_R], folder_name('vid_EHR_R'), title=[number])
+        # visualise([EHR_R], folder_name('vid_dSTMD_R'), title=[number])
         # visualise([EHR_L], folder_name('vid_EHR_L'), title=[number])
     
     # Spatially pool d-STMD
@@ -637,7 +649,7 @@ for t, file in enumerate(files):
     #TODO: Add receptive fields for d-STMD
     
     """
-    Wide-field EMD
+    Wide-field directionally selective EMD
     """
     
     # HR-Correlator -- EMD - right preferred direction
