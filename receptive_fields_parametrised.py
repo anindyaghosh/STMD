@@ -10,7 +10,8 @@ from receptive_field_array import RF_array
 
 neurons = {"TSDN" : {"sigma_vals":12.74, "centre":[0, 45]}, 
            "dSTMD" : {"sigma_vals":3, "centre":[0, 55]}, 
-           "wSTMD" : {"sigma_vals":[21.23, 16.99], "centre":[0, 55]}}
+           "wSTMD" : {"sigma_vals":[16.99, 16.99], "centre":[-5, 55]}}
+           # "wSTMD" : {"sigma_vals":[21.23, 16.99], "centre":[0, 55]}}
 
 class receptive_fields:
     def __init__(self, vf_resolution):
@@ -84,6 +85,8 @@ class receptive_fields:
         
         if neuron == "dSTMD":
             coords = RF_array(mean=mean, sigma=sigma, overlap=0.25, screen_resolution=self.screen_resolution)
+            # Remove all points below zero degrees elevation
+            coords = coords[coords[:,1] >= 0]
             _RF_flag = True
             mean_pixels = self.calc_centre_coordinates(coords, _RF_flag)
         else:
@@ -109,8 +112,8 @@ class receptive_fields:
             
             Z += A * np.exp(-(a * (X - x0)**2 + 2*b*(X - x0)*(Y - y0) + c*(Y - y0)**2))
             
-            if neuron == "wSTMD":
-                Z[:,:x0] = 0
+            # if neuron == "wSTMD":
+            #     Z[:,:x0] = 0
             
         return Z
 

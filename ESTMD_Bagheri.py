@@ -38,6 +38,8 @@ def visualise(vars, sub_folder=None, **kwargs):
         else:
             var = cv2.cvtColor(var, cv2.COLOR_BGR2RGB)
             axes.imshow(var)
+            if kwargs['rf']:
+                axes.contour(vf[...,0], levels=[0.5])
         hide_axes(axes)
         
         save_fig(kwargs['title'][i], sub_folder)
@@ -69,21 +71,10 @@ tuning_folder = 'Bagheri/Tuning'
 botanic_folder = 'Bagheri/botanic'
 EMD_folder = 'Bagheri/EMD'
 root = os.path.join(os.getcwd(), EMD_folder) # Has to change between image_folder and tuning_folder for tuning experiments
+os.makedirs(root, exist_ok=True)
 # Acceptable image file extensions
 exts = ['.jpg', '.png']
 files = [file for file in os.listdir(root) if (file.endswith(tuple(exts)) and 'IMG' in file)]
-
-# Obtain ground truths
-if any(x in root for x in [nominal_folder, 'botanic', 'EMD']):
-    with open(os.path.join(root, 'GroundTruth.txt')) as groundTruth:
-        GT = []
-        for line in groundTruth:
-            # Save all ground truths as tuples
-            tup = eval(line.rstrip())
-            start_xy = (tup[0], tup[1])
-            end_xy = (tup[0] + tup[2], tup[1] + tup[3])
-            GT.append((*start_xy, *end_xy))
-    groundTruth.close()
 
 photo_z = {"b" : np.array([0, 0.0001, -0.0011, 0.0052, -0.0170, 0.0439, -0.0574, 0.1789, -0.1524]), 
            "a" : np.array([1, -4.3331, 8.6847, -10.7116, 9.0004, -5.3058, 2.1448, -0.5418, 0.0651])}
@@ -129,11 +120,13 @@ INHIB_KERNEL = np.array([[-1, -1, -1, -1, -1],
 #                           [-1, -1, -1, -1, -1],
 #                           [-1, -1, -1, -1, -1]])
 
+desired_resolution = (138, 155)
+
 def create_EMD_tests():
     # image = naturalistic_noise.fourier()
     # image = cv2.imread('fourier.png')
     # image = cv2.imread('RandomImageLarge.png')
-    image = cv2.imread('sparse_field.png')
+    image = cv2.imread('sparse_field_uniform.png')
     image = cv2.blur(image, (5,5))
     
     bg_dims = image[1000:1400,2000:4594].copy()
@@ -142,11 +135,10 @@ def create_EMD_tests():
     pixels_per_degree = bg_dims.shape[1]/360
     
     # Conforming to desired visual field
-    desired_resolution = (138, 155)
     pixels_to_keep = (np.array(desired_resolution) * pixels_per_degree).astype(int)
     
     target_size = round(2.8 * pixels_per_degree) # 2.8 degrees is optimal target size
-    start = (1125, 250)
+    start = (1125, 400)
     
     # Adjust starting row
     lst = list(start)
@@ -154,7 +146,7 @@ def create_EMD_tests():
     start = tuple(lst)
     
     # Calculate velocity of image
-    velocity = (120/1000) * pixels_per_degree # 120 degrees/second gives optimal latency of 33 ms in desired response range
+    velocity = (315/1000) * pixels_per_degree # 120 degrees/second gives optimal latency of 33 ms in desired response range
     velocity *= (Ts*1000) # Sample every 1 timestep (ms)
     
     # image = np.ones(image.shape) * 255
@@ -162,9 +154,9 @@ def create_EMD_tests():
     # image[start[0]:start[0]+target_size, start[1]:start[1]+target_size] = 0
     
     with open(os.path.join(root, 'GroundTruth.txt'), 'w') as f:
-        for timestep in range(100):
+        for timestep in range(200):
             # Roll image by specific time
-            # image = np.roll(image, -round(velocity), axis=1)
+            image = np.roll(image, -round(velocity), axis=1)
             
             # Crop to save memory and increase computation speed
             # bg = image[1000:1400,2000:4594].copy()
@@ -223,6 +215,18 @@ def create_botanic_panorama():
     
 if botanic_folder in root:
     create_botanic_panorama()
+    
+# Obtain ground truths
+if any(x in root for x in [nominal_folder, 'botanic', 'EMD']):
+    with open(os.path.join(root, 'GroundTruth.txt')) as groundTruth:
+        GT = []
+        for line in groundTruth:
+            # Save all ground truths as tuples
+            tup = eval(line.rstrip())
+            start_xy = (tup[0], tup[1])
+            end_xy = (tup[0] + tup[2], tup[1] + tup[3])
+            GT.append((*start_xy, *end_xy))
+    groundTruth.close()
     
 # Nordstrom and O'Carroll (2006)
 def image_generation(pixels_per_degree, timestep, mode=None, clutter=None):
@@ -487,7 +491,7 @@ def matlab_style_conv2(x, y, mode='same', **kwargs):
     # Remove padding
     return convolved[pad_width:-pad_width, pad_width:-pad_width]
     
-degrees_in_image = 360
+degrees_in_image = desired_resolution[1]
 image_size, ds_size = initialisations(degrees_in_image)
 
 # sf = np.zeros((*image_size, len(files)))
@@ -503,6 +507,9 @@ RTC_Output = np.zeros(on_f.shape)
 bbox_ds = []
 
 delay = 10
+STMD_all = []
+LPTC_all = []
+wSTMD_all = []
 
 """
 Simulation of ESTMD
@@ -518,7 +525,8 @@ for t, file in enumerate(files):
         if t < len(files) - delay:
             image_save = cv2.rectangle(image.copy(), (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 0, 255), 2)
             number = naming_convention(t+1)
-            # visualise([image_save], folder_name('vid_images'), title=[number])
+            rf = True if 'EMD' in root else False
+            visualise([image_save], folder_name('vid_images'), title=[number], rf=rf)
     
     # Extract green channel from BGR
     green = image[:,:,1]
@@ -638,15 +646,14 @@ for t, file in enumerate(files):
     if t < len(files) - delay:
         number = naming_convention(t+1)
         # visualise([EHR_R], folder_name('vid_dSTMD_R'), title=[number])
-        # visualise([EHR_L], folder_name('vid_EHR_L'), title=[number])
+        # visualise([EHR_L], folder_name('vid_dSTMD_L'), title=[number])
     
     # Spatially pool d-STMD
     STMD_sp = np.array([np.sum(EHR_R), np.sum(EHR_L)])
+    STMD_all.append(STMD_sp)
     STMD_sp_sum = np.sum([np.sum(EHR_R), np.sum(EHR_L)])
     
     #TODO: Plots of cardinal direction STMDs, sum of STMDs compared with EMDS
-    
-    #TODO: Add receptive fields for d-STMD
     
     """
     Wide-field directionally selective EMD
@@ -699,9 +706,33 @@ for t, file in enumerate(files):
     
     # Spatially pool EMD
     EMD_sp = np.array([np.sum(EMD_Output_R), np.sum(EMD_Output_L)])
+    LPTC_all.append(EMD_sp)
     
-print(f'{t},{np.sum(ESTMD_Output[:,:,-1])}')
+    """
+    Wide-field directionally selective STMD
+    """
+    
+    wEHR_R = np.maximum(EHR_right, 0.0) * Downsampledvf[:,:-1,2]
+    wEHR_L = -np.minimum(EHR_right, 0.0) * Downsampledvf[:,:-1,2]
+    
+    if t < len(files) - delay:
+        number = naming_convention(t+1)
+        visualise([wEHR_R], folder_name('vid_wSTMD_R'), title=[number])
+        # visualise([wEHR_L], folder_name('vid_wSTMD_L'), title=[number])
+    
+    # Spatially pool d-STMD
+    wSTMD_sp = np.array([np.sum(wEHR_R), np.sum(wEHR_L)])
+    wSTMD_all.append(wSTMD_sp)
+    wSTMD_sp_sum = np.sum([np.sum(wEHR_R), np.sum(wEHR_L)])
+    
+STMD_all = np.stack((STMD_all))
+LPTC_all = np.stack((LPTC_all))
+wSTMD_all = np.stack((wSTMD_all))
+
 print(f'{t},{np.sum(EMD_Output_right)},{np.sum(EMD_Output_down)}')
+
+# print(f'{t},{np.sum(ESTMD_Output[:,:,-1])}')
+# print(f'{t},{np.sum(EMD_Output_right)},{np.sum(EMD_Output_down)}')
     
 results_on, results_off = Bagheri_load_results()
 
