@@ -10,13 +10,13 @@ from receptive_field_array import RF_array
 
 neurons = {"TSDN" : {"sigma_vals":12.74, "centre":[0, 45]}, 
            "dSTMD" : {"sigma_vals":3, "centre":[0, 55]}, 
-           "wSTMD" : {"sigma_vals":[16.99, 16.99], "centre":[-5, 55]}}
+           "wSTMD" : {"sigma_vals":[16.99, 16.99], "centre":[5, 55]}}
            # "wSTMD" : {"sigma_vals":[21.23, 16.99], "centre":[0, 55]}}
 
 class receptive_fields:
     def __init__(self, vf_resolution):
         self.vf_resolution = vf_resolution
-        self.screen_resolution = np.array([155, 138]) # in degrees
+        self.screen_resolution = np.array([(155 * 2), 138]) # in degrees
         
         self.pixels_per_degree = np.flip(self.vf_resolution) / self.screen_resolution
         
@@ -56,7 +56,7 @@ class receptive_fields:
             return np.stack((x, y)).T
     
     def rf_imshow(self, rf):
-        fig, axes = plt.subplots(figsize=(12,9))
+        fig, axes = plt.subplots(figsize=(12,9), dpi=200)
         x_extent, y_extent = self.screen_resolution / 2
         img = axes.imshow(rf, extent=[-x_extent, x_extent, -y_extent, y_extent])
         axes.grid()
@@ -64,7 +64,7 @@ class receptive_fields:
         axes.set_ylabel('Elevation [$^\circ$]')
         plt.colorbar(img)
 
-    def gaussian(self, neuron : str):
+    def gaussian(self, neuron : str, vf : np.ndarray):
         """For the general form of the Gaussian function, the coefficient A is the height of the peak and (x0, y0) is the center of the Gaussian blob.
     
         Parameters
@@ -84,7 +84,7 @@ class receptive_fields:
             sigma = [sigma, sigma]
         
         if neuron == "dSTMD":
-            coords = RF_array(mean=mean, sigma=sigma, overlap=0.25, screen_resolution=self.screen_resolution)
+            coords = RF_array(mean=mean, sigma=sigma, overlap=0.25, screen_resolution=self.screen_resolution, vf=vf)
             # Remove all points below zero degrees elevation
             coords = coords[coords[:,1] >= 0]
             _RF_flag = True
@@ -122,10 +122,12 @@ class receptive_fields:
         if not os.path.isfile('neurons_rf.npz') or self.reset_flag:
             vf = np.zeros((*self.vf_resolution, 3))
             for i, neuron in enumerate(neurons.keys()):
-                vf[...,i] += self.gaussian(neuron)
+                vf[...,i] += self.gaussian(neuron, vf)
                 # Clip values to ensure multiplication of response * RF = 0 when stimulus is not close to the centre of the RF.
                 vf[...,i][vf[...,i] <= 0.01] = 0
                 self.rf_imshow(vf[...,i])
+            # Take half of receptive field to simulate right eye
+            vf = vf[:,int(vf.shape[1] / 2):,:]
             np.savez('neurons_rf.npz', vf=vf)
         else:
             vf = np.load('neurons_rf.npz')["vf"]

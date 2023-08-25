@@ -138,7 +138,7 @@ def create_EMD_tests():
     pixels_to_keep = (np.array(desired_resolution) * pixels_per_degree).astype(int)
     
     target_size = round(2.8 * pixels_per_degree) # 2.8 degrees is optimal target size
-    start = (1125, 400)
+    start = (1100, 250)
     
     # Adjust starting row
     lst = list(start)
@@ -146,7 +146,7 @@ def create_EMD_tests():
     start = tuple(lst)
     
     # Calculate velocity of image
-    velocity = (315/1000) * pixels_per_degree # 120 degrees/second gives optimal latency of 33 ms in desired response range
+    velocity = (120/1000) * pixels_per_degree # 120 degrees/second gives optimal latency of 33 ms in desired response range
     velocity *= (Ts*1000) # Sample every 1 timestep (ms)
     
     # image = np.ones(image.shape) * 255
@@ -163,7 +163,7 @@ def create_EMD_tests():
             bg = image[1000:1000 + pixels_to_keep[0], 2000:2000 + pixels_to_keep[1]].copy()
             
             bg[start[0]:start[0]+target_size, 
-                start[1]+round(velocity)*timestep:start[1]+target_size+round(velocity)*timestep] = 0
+                start[1]-target_size-round(velocity)*timestep:start[1]-round(velocity)*timestep] = 0
             
             cv2.imwrite(os.path.join(EMD_folder, naming_convention(timestep+1) + '.png'), bg)
             
@@ -180,6 +180,7 @@ def create_EMD_tests():
     
 if EMD_folder in root:
     pixels_to_keep = create_EMD_tests()
+    pixels_to_keep[1] *= 2
     vf = rf(pixels_to_keep).run()
 
 # Wiederman (2008)
