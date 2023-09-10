@@ -57,17 +57,17 @@ def plots(**kwargs):
     vals_pd = pd.DataFrame(arr, columns = ['ESTMD (left axis)',
                                            'EMD-right (right axis)','EMD-down (right axis)'])
     
-    fig, axes = plt.subplots(figsize=(10,6))
+    fig, axes = plt.subplots(figsize=(9,6), dpi=500)
     x = np.arange(num)
     w = 0.3
     plt.xticks(x + w/3, label)
-    ESTMD = axes.bar(x, vals_pd['ESTMD'], width=w/3, color='b', align='center')
+    ESTMD = axes.bar(x, vals_pd['ESTMD (left axis)'], width=w/3, color='b', align='center')
     axes2 = axes.twinx()
-    EMD_right = axes2.bar(x + w/3, vals_pd['EMD-right'], width=w/3, color='g',align='center')
-    EMD_down = axes2.bar(x + 2*w/3, vals_pd['EMD-down'], width=w/3, color='r', align='center')
+    EMD_right = axes2.bar(x + w/3, vals_pd['EMD-right (right axis)'], width=w/3, color='g',align='center')
+    EMD_down = axes2.bar(x + 2*w/3, vals_pd['EMD-down (right axis)'], width=w/3, color='r', align='center')
     axes.set_xlabel('Relative motion [degrees]')
     axes.set_ylabel('ESTMD activity [a.u.]')
     axes2.set_ylabel('EMD activity [a.u.]')
-    plt.legend([ESTMD, EMD_right, EMD_down], ['ESTMD','EMD-right','EMD-down'], loc='upper left')
+    plt.legend([ESTMD, EMD_right, EMD_down], ['ESTMD','EMD-right','EMD-down'], loc='upper center')
     
-plots(stim='ESTMD_EMD')
+plots(stim='proof')

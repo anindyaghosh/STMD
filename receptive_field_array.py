@@ -47,7 +47,7 @@ def RF_array(mean: list, sigma: list, overlap: float, screen_resolution: list, v
     coordinates_pixels2degrees = (TSDN_coordinates / pixels_per_degree ) - screen_resolution / 2
     coordinates_pixels2degrees[:,1] = np.abs(coordinates_pixels2degrees[:,1])
     
-    fig, axes = plt.subplots(dpi=200)
+    fig, axes = plt.subplots(dpi=500)
     axes.scatter(coordinates_pixels2degrees[:,0], coordinates_pixels2degrees[:,1], s=5)
     x_extent, y_extent = screen_resolution / 2
     axes.imshow(TSDN_rf, extent=[-x_extent, x_extent, -y_extent, y_extent])

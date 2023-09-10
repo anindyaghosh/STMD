@@ -2,6 +2,7 @@
 """
 
 import matplotlib.pyplot as plt
+from mpl_toolkits.axes_grid1 import make_axes_locatable
 import numpy as np
 import os
 import json
@@ -56,13 +57,20 @@ class receptive_fields:
             return np.stack((x, y)).T
     
     def rf_imshow(self, rf):
-        fig, axes = plt.subplots(figsize=(12,9), dpi=200)
+        fig, axes = plt.subplots(figsize=(12,9), dpi=500)
         x_extent, y_extent = self.screen_resolution / 2
         img = axes.imshow(rf, extent=[-x_extent, x_extent, -y_extent, y_extent])
         axes.grid()
         axes.set_xlabel('Azimuth [$^\circ$]')
         axes.set_ylabel('Elevation [$^\circ$]')
-        plt.colorbar(img)
+        divider = make_axes_locatable(axes)
+  
+        # creating new axes on the right side of current axes(axes). The width of cax will be 5% of axes
+        # and the padding between cax and axes will be fixed at 0.05 inch.
+        colorbar_axes = divider.append_axes("right",
+                                            size="5%",
+                                            pad=0.2)
+        plt.colorbar(img, cax=colorbar_axes)
 
     def gaussian(self, neuron : str, vf : np.ndarray):
         """For the general form of the Gaussian function, the coefficient A is the height of the peak and (x0, y0) is the center of the Gaussian blob.
