@@ -9,7 +9,7 @@ def sparse_dot_field(uniform=False):
     
     for i in chars:
         if uniform:
-            size = 20
+            size = 15
             filename = 'sparse_field_uniform.png'
         else:
             size = i[3]
@@ -23,4 +23,4 @@ def clouds():
     
     #TODO: create patches of circles
     
-# sparse_dot_field(uniform=True)
+sparse_dot_field(uniform=True)

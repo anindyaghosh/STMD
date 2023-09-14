@@ -19,13 +19,13 @@ Helper functions
 """
 
 # For quick shell script
-# import argparse
-# parser = argparse.ArgumentParser()
+import argparse
+parser = argparse.ArgumentParser()
 # parser.add_argument('-nf', '--nominal_folder', type=str)
-# parser.add_argument('-v', '--value', type=float)
-# parser.add_argument('-f', '--folder', type=str)
+parser.add_argument('-v', '--value', type=float)
+parser.add_argument('-f', '--folder', type=str)
 
-# args = parser.parse_args()
+args = parser.parse_args()
 
 save_folder = os.path.join(os.getcwd(), 'Bagheri')
 
@@ -109,11 +109,11 @@ FDSR_K_SLOW = np.exp(-1*Ts / FDSR_TAU_SLOW)
 
 LPF5_K = np.exp(-1*0.05 / LPF5_TAU)
 
-INHIB_KERNEL = np.array([[-1, -1, -1, -1, -1],
-                          [-1, 0, 0, 0, -1],
-                          [-1, 0, 2, 0, -1],
-                          [-1, 0, 0, 0, -1],
-                          [-1, -1, -1, -1, -1]])
+INHIB_KERNEL = 0.7 * np.array([[-1, -1, -1, -1, -1],
+                               [-1, 0, 0, 0, -1],
+                               [-1, 0, 2, 0, -1],
+                               [-1, 0, 0, 0, -1],
+                               [-1, -1, -1, -1, -1]])
 
 # 1D kernel
 # INHIB_KERNEL = np.array([[-1],
@@ -153,7 +153,7 @@ def create_EMD_tests():
     # Conforming to desired visual field
     pixels_to_keep = (np.array(desired_resolution) * pixels_per_degree).astype(int)
     
-    target_size = round(2.2 * pixels_per_degree) # 2.2 degrees is optimal target size
+    target_size = round(2.1 * pixels_per_degree) # 2.2 degrees is optimal target size
     start = (1100, 0) # 250
     
     # Adjust starting row
@@ -162,7 +162,7 @@ def create_EMD_tests():
     start = tuple(lst)
     
     # Calculate velocity of image
-    velocity = (130/1000) * pixels_per_degree # 130 degrees/second gives optimal latency of 29 ms in desired response range
+    velocity = (args.value/1000) * pixels_per_degree # 160 degrees/second gives optimal latency of 29 ms in desired response range
     velocity *= (Ts*1000) # Sample every 1 timestep (ms)
     
     # image = np.ones(image.shape) * 255
@@ -170,15 +170,15 @@ def create_EMD_tests():
     # image[start[0]:start[0]+target_size, start[1]:start[1]+target_size] = 0
     
     with open(os.path.join(root, 'GroundTruth.txt'), 'w') as f:
-        for timestep in range(200):
+        for timestep in range(100):
             # Roll image by specific time
-            image = np.roll(image, -round(velocity), axis=1)
+            image = np.roll(image, round(velocity), axis=1)
             
             # Crop to save memory and increase computation speed
             # bg = image[1000:1400,2000:4594].copy()
             bg = image[1000:1000 + pixels_to_keep[0], 2000:2000 + pixels_to_keep[1]].copy()
             
-            bg[start[0]:start[0]+target_size, start[1]+round(velocity)*timestep:start[1]+target_size+round(velocity)*timestep] = 0
+            # bg[start[0]:start[0]+target_size, start[1]+round(velocity)*timestep:start[1]+target_size+round(velocity)*timestep] = 0
             
             # Two targets moving together
             if degree_of_separation is not None:
@@ -210,13 +210,13 @@ def create_botanic_panorama():
     
     # Target size definitions
     pixels_per_degree = image.shape[1]/360
-    target_size = round(2.2 * pixels_per_degree) # 2.8 degrees is optimal target size
+    target_size = round(2.1 * pixels_per_degree) # 2.8 degrees is optimal target size
     start = (205, 1225) # 770
     
     image[start[0]:start[0]+target_size, start[1]:start[1]+target_size,:] = 0
         
     # Calculate velocity of image
-    velocity = (130/1000) * pixels_per_degree # 130 degrees/second gives optimal latency of 29 ms in desired response range
+    velocity = (160/1000) * pixels_per_degree # 130 degrees/second gives optimal latency of 29 ms in desired response range
     velocity *= (Ts*1000) # Sample every 1 timestep (ms)
     
     with open(os.path.join(root, 'GroundTruth.txt'), 'w') as f:
@@ -256,7 +256,7 @@ def image_generation(timestep, mode=None, clutter=None):
     if not any([mode, clutter]):
         raise TypeError('Missing mode and clutter. Either height or velocity')
         
-    images = np.ones((400, 205)) * 255
+    images = np.ones((410, 410)) * 255
     
     # Calculate pixels per degree
     pixels_per_degree = images.shape[1] / desired_resolution[1]
@@ -264,17 +264,17 @@ def image_generation(timestep, mode=None, clutter=None):
     # Height tuning
     if mode == 'height':
         target_speed = (50/1000) * pixels_per_degree # 50 degrees per second
-        target_size = round(12 * pixels_per_degree)
+        target_size = round(2.1 * pixels_per_degree)
         
     # Velocity tuning
     elif mode == 'velocity':
-        target_speed = (130/1000) * pixels_per_degree
-        target_size = round(2.2 * pixels_per_degree) # 2.2 degrees
+        target_speed = (160/1000) * pixels_per_degree
+        target_size = round(0.8 * pixels_per_degree) # 2.2 degrees
         
     if clutter:
         if mode is None:
             target_speed = (300/1000) * pixels_per_degree # 300 degrees per second
-            target_size = round(2.2 * pixels_per_degree) # 2.2 degrees
+            target_size = round(2.1 * pixels_per_degree) # 2.1 degrees
         
         # Images become cluttered
         mean_magnitude = naturalistic_noise.fourier()
@@ -283,9 +283,11 @@ def image_generation(timestep, mode=None, clutter=None):
     # Position of target based on target speed
     x_loc = round(target_speed * timestep)
     
+    start = (10, 20) # (10, 20)
+    
     # Define dark target
-    images[2:2+target_size, x_loc:x_loc+target_size] = 0
-    # images[2:2+target_size, x_loc:round(x_loc+pixels_per_degree * 0.8)] = 0
+    images[start[0]:start[0]+target_size, start[1]+x_loc:start[1]+x_loc+target_size] = 0
+    # images[start[0]:start[0]+target_size, start[1]+x_loc:start[1]+round(x_loc+pixels_per_degree * 0.8)] = 0
     
     save_dir = os.path.join(os.getcwd(), 'Bagheri', 'Tuning')
     os.makedirs(save_dir, exist_ok=True)
@@ -301,7 +303,7 @@ def indices_of_max_value(arr):
     arr_sub = arr[2,:,:]
     return np.unravel_index(np.argmax(arr_sub, axis=None), arr_sub.shape)
     
-def tuning_plots(mode, bar=False):
+def tuning_plots(mode, bar=False, velocity_wiederman=False):
     if mode == 'height':
         tuning_array_file = 'height_tuning_ESTMD.txt'
         if bar:
@@ -323,23 +325,35 @@ def tuning_plots(mode, bar=False):
     tuning_array = np.asarray(tuning_array).T
     tuning_array[1,:] = tuning_array[1,:]/np.max(tuning_array[1,:])
     
+    import pandas as pd
+    
+    def read_csv(dataset_csv):
+        df = pd.read_csv(dataset_csv)
+        wiederman = df.iloc[:,[0,1]].to_numpy()[1:].astype(float)
+        wiederman = wiederman[~np.isnan(wiederman).any(axis=1)]
+        
+        physiology = df.iloc[:,[2,3]].to_numpy()[1:].astype(float)
+    
+        return wiederman, physiology
+    
     from helper_functions import set_size
     
-    fig, axes = plt.subplots(figsize=set_size(469.75502, fraction=2), dpi=500)
-    
-    import pandas as pd
-    df = pd.read_csv('C:/Users/ag803/STMD/STMD paper assets/wpd_datasets.csv')
-    wiederman = df.iloc[:,[0,1]].to_numpy()[1:].astype(float)
-    wiederman = wiederman[~np.isnan(wiederman).any(axis=1)]
-    
-    physiology = df.iloc[:,[2,3]].to_numpy()[1:].astype(float)
+    fig, axes = plt.subplots(figsize=(7,6), dpi=500)
     
     ax2 = axes.twinx()
     if bar:
+        wiederman, physiology = read_csv('C:/Users/ag803/STMD/STMD paper assets/wpd_datasets_size.csv')
         estmd = axes.plot(tuning_array[0,:], tuning_array[1,:], '-o', label='ESTMD model reproduction', markersize=6, color='crimson')
         wiederman_model = axes.plot(wiederman[:,0], wiederman[:,1], '-^', label='Wiederman et al. (2008) model', markersize=6, color='black')
         ephys = ax2.errorbar(physiology[::3,0], physiology[::3,1], yerr=np.abs(np.c_[physiology[2::3,1], physiology[1::3,1]].T - physiology[::3,1]), 
                              label='Physiology STMD', marker="s", markersize=6, color='green')
+        axs = estmd + wiederman_model
+    elif mode == 'velocity' and velocity_wiederman:
+        wiederman, physiology = read_csv('C:/Users/ag803/STMD/STMD paper assets/wpd_datasets_velocity.csv')
+        estmd = axes.plot(tuning_array[0,:], tuning_array[1,:], '-o', label='ESTMD model reproduction', markersize=6, color='crimson')
+        wiederman_model = axes.plot(wiederman[:,0], wiederman[:,1], '-^', label='Wiederman et al. (2008) model', markersize=6, color='black')
+        ephys = ax2.errorbar(physiology[::3,0], physiology[::3,1], yerr=np.abs(np.c_[physiology[2::3,1], physiology[1::3,1]].T - physiology[::3,1]), 
+                              label='Physiology STMD', marker="s", markersize=6, color='green')
         axs = estmd + wiederman_model
     else:
         estmd = axes.plot(tuning_array[0,:], tuning_array[1,:], '-o', label='ESTMD model reproduction', markersize=6)
@@ -352,17 +366,19 @@ def tuning_plots(mode, bar=False):
     #     col = np.argwhere(tuning_array == 300)[0][1]
     #     axes.plot(tuning_array[0,col], tuning_array[1,col], 'k*', markersize=10)
     #     ax2.plot(tuning_array[0,col], tuning_array[2,col], 'k*', markersize=10)
-    if bar or mode == 'velocity':
-        axes.set_xscale('log')
+    if bar or (mode == 'velocity' and velocity_wiederman):
         if bar:
-            ax2.set_ylabel('STMD response (normalised)')
-            axes.legend(axs + [ephys[0]], labs1 + [ephys.get_label()])
             axes.set_xlim([0.1, 100]) # To match Wiederman et al. (2008) paper
         else:
-            axes.legend(axs, labs1)
-            ax2.set_ylabel('STMD response (normalised)')
-            ax2.set_ylabel('Latency [ms]')
+            axes.set_xlim([1, 1000])
+        axes.set_xscale('log')
+        ax2.set_ylabel('STMD response (normalised)')
+        axes.legend(axs + [ephys[0]], labs1 + [ephys.get_label()])
+        axes.set_ylim([0, None])
+        ax2.set_ylim([0, None])
     else:
+        if mode == 'velocity' and not velocity_wiederman:
+            axes.set_xscale('log')
         axes.legend(axs, labs1, loc='upper center')
         ax2.set_ylabel('Latency [ms]')
     axes.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: '{:g}'.format(x)))
@@ -511,7 +527,7 @@ def bounding_box(image, bbox, t, upscale=None):
         tup_subtract = tuple(map(lambda i, j: i - j, bbox[-2:], bbox[:2]))
         width, height = tup_subtract
     
-        rect = plt.Rectangle((x-0.5, y+1.5), width-1, height-1, fill=False, color="limegreen", linewidth=1)
+        rect = plt.Rectangle((x-1.5, y+0.5), width-1, height-1, fill=False, color="limegreen", linewidth=1)
         axes.add_patch(rect)
     hide_axes(axes)
     
@@ -543,7 +559,7 @@ Initialisations
 def initialisations(degrees_in_image):
     image_size = cv2.imread(os.path.join(root, files[0])).shape[:-1]
     pixels_per_degree = image_size[1]/degrees_in_image # horizontal pixels in output / horizontal degrees (97.84)
-    pixel2PR = int(np.ceil(pixels_per_degree))
+    pixel2PR = int(pixels_per_degree)
     ds_size = (tuple(int(np.ceil(x/pixel2PR)) for x in image_size))
     
     return image_size, ds_size
@@ -595,6 +611,9 @@ STMD_all = []
 LPTC_all = []
 wSTMD_all = []
 
+spontaneous = []
+LPTC_HR = []
+
 """
 Simulation of ESTMD
 """
@@ -617,14 +636,15 @@ for t, file in enumerate(files):
     
     image_size = green.shape
     pixels_per_degree = image_size[1]/degrees_in_image # horizontal pixels in output / horizontal degrees (97.84)
-    pixel2PR = int(np.ceil(pixels_per_degree)) # ratio of pixels to photoreceptors in the bio-mimetic model (1 deg spatial sampling... )
+    pixel2PR = int(pixels_per_degree) # ratio of pixels to photoreceptors in the bio-mimetic model (1 deg spatial sampling... )
     
     sigma = 1.4 / (2 * np.sqrt(2 * np.log(2)))
     sigma_pixel = sigma * pixels_per_degree # sigma_pixel = (sigma in degrees (0.59))*pixels_per_degree
-    kernel_size = int(np.ceil(sigma_pixel))
+    kernel_size = int(6 * sigma_pixel - 1)
     
     """Downsampling receptive fields"""
-    Downsampledvf = cv2.resize(vf, np.flip(ds_size), interpolation=cv2.INTER_NEAREST)
+    if EMD_folder in root:
+        Downsampledvf = cv2.resize(vf, np.flip(ds_size), interpolation=cv2.INTER_NEAREST)
     
     # Spatial filtered through LPF1
     # Gaussian kernel
@@ -706,7 +726,7 @@ for t, file in enumerate(files):
         Correlate_OFF_ON = np.zeros(Correlate_OFF_ON.shape)
         
         RTC_Output[:,:,t] = (Correlate_ON_OFF + Correlate_OFF_ON) * 6
-        ESTMD_Output[:,:,t] = (RTC_Output[:,:,t] - 0.01).clip(min=0)
+        ESTMD_Output[:,:,t] = (RTC_Output[:,:,t] - 0.01).clip(min=0) # 0.01
         ESTMD_Output[:,:,t] = np.tanh(ESTMD_Output[:,:,t])
         
     """
@@ -725,8 +745,9 @@ for t, file in enumerate(files):
     EHR_right = (EHR_Delayed_Output_right[:,:-1] * ESTMD_Output[:,1:,t]) - (ESTMD_Output[:,:-1,t] * EHR_Delayed_Output_right[:,1:])
     
     # Half-wave rectification
-    EHR_R = np.maximum(EHR_right, 0.0) * Downsampledvf[:,:-1,1]
-    EHR_L = -np.minimum(EHR_right, 0.0) * Downsampledvf[:,:-1,1]
+    if EMD_folder in root:
+        EHR_R = np.maximum(EHR_right, 0.0) * Downsampledvf[:,:-1,1]
+        EHR_L = -np.minimum(EHR_right, 0.0) * Downsampledvf[:,:-1,1]
     
     if t < len(files) - delay:
         number = naming_convention(t+1)
@@ -734,9 +755,10 @@ for t, file in enumerate(files):
         # visualise([EHR_L], folder_name('vid_dSTMD_L'), title=[number])
     
     # Spatially pool d-STMD
-    STMD_sp = np.array([np.sum(EHR_R), np.sum(EHR_L)])
-    STMD_all.append(STMD_sp)
-    STMD_sp_sum = np.sum([np.sum(EHR_R), np.sum(EHR_L)])
+    if EMD_folder in root:
+        STMD_sp = np.array([np.sum(EHR_R), np.sum(EHR_L)])
+        STMD_all.append(STMD_sp)
+        STMD_sp_sum = np.sum([np.sum(EHR_R), np.sum(EHR_L)])
     
     #TODO: Plots of cardinal direction STMDs, sum of STMDs compared with EMDS
     
@@ -762,7 +784,7 @@ for t, file in enumerate(files):
     
     # EMD_Output_right = (on_HR_right + off_HR_right) * 6
     EMD_Output_right = off_HR_right * 6
-    EMD_Output_right[np.abs(EMD_Output_right) < 0.1] = 0
+    EMD_Output_right[np.abs(EMD_Output_right) < 0.01] = 0
     EMD_Output_right = np.tanh(EMD_Output_right)
     
     # HR-Correlator -- EMD - down preferred direction
@@ -783,14 +805,17 @@ for t, file in enumerate(files):
     
     # EMD_Output_down = (on_HR_down + off_HR_down) * 6
     EMD_Output_down = off_HR_down * 6
-    EMD_Output_down[np.abs(EMD_Output_down) < 0.1] = 0
+    EMD_Output_down[np.abs(EMD_Output_down) < 0.01] = 0
     EMD_Output_down = np.tanh(EMD_Output_down)
     
     EMD_Output_R = np.maximum(EMD_Output_right, 0.0)
     EMD_Output_L = -np.minimum(EMD_Output_right, 0.0)
     
     # Add Poisson baseline
-    LPTC_baseline = np.random.poisson(20)
+    LPTC_spontaneous = np.random.poisson(20)
+    LPTC_baseline = LPTC_spontaneous + np.sum(EMD_Output_right) # right is preferred direction of LPTC
+    LPTC_HR.append(LPTC_baseline)
+    spontaneous.append(LPTC_spontaneous)
     
     # Spatially pool EMD
     EMD_sp = np.array([np.sum(EMD_Output_R), np.sum(EMD_Output_L)])
@@ -800,8 +825,9 @@ for t, file in enumerate(files):
     Wide-field directionally selective STMD
     """
     
-    wEHR_R = np.maximum(EHR_right, 0.0) * Downsampledvf[:,:-1,2]
-    wEHR_L = -np.minimum(EHR_right, 0.0) * Downsampledvf[:,:-1,2]
+    if EMD_folder in root:
+        wEHR_R = np.maximum(EHR_right, 0.0) * Downsampledvf[:,:-1,2]
+        wEHR_L = -np.minimum(EHR_right, 0.0) * Downsampledvf[:,:-1,2]
     
     if t < len(files) - delay:
         number = naming_convention(t+1)
@@ -809,19 +835,24 @@ for t, file in enumerate(files):
         # visualise([wEHR_L], folder_name('vid_wSTMD_L'), title=[number])
     
     # Spatially pool d-STMD
-    wSTMD_sp = np.array([np.sum(wEHR_R), np.sum(wEHR_L)])
-    wSTMD_all.append(wSTMD_sp)
-    wSTMD_sp_sum = np.sum([np.sum(wEHR_R), np.sum(wEHR_L)])
-    
-STMD_all = np.stack((STMD_all))
-LPTC_all = np.stack((LPTC_all))
-wSTMD_all = np.stack((wSTMD_all))
+    if EMD_folder in root:
+        wSTMD_sp = np.array([np.sum(wEHR_R), np.sum(wEHR_L)])
+        wSTMD_all.append(wSTMD_sp)
+        wSTMD_sp_sum = np.sum([np.sum(wEHR_R), np.sum(wEHR_L)])
+
+if EMD_folder in root:    
+    STMD_all = np.stack((STMD_all))
+    LPTC_all = np.stack((LPTC_all))
+    wSTMD_all = np.stack((wSTMD_all))
 
 # Rightward motion first
 if EMD_folder in root:
-    print(f'STMD:{np.sum(STMD_all[:,0])},{np.sum(STMD_all[:,1])};'
-          f'LPTC:{np.sum(LPTC_all[:,0])},{np.sum(LPTC_all[:,1])};'
-          f'wSTMD:{np.sum(wSTMD_all[:,0])},{np.sum(wSTMD_all[:,1])}')
+    # print(f'STMD:{np.sum(STMD_all[:,0])},{np.sum(STMD_all[:,1])};'
+    #       f'LPTC:{np.sum(LPTC_all[:,0])},{np.sum(LPTC_all[:,1])};'
+    #       f'wSTMD:{np.sum(wSTMD_all[:,0])},{np.sum(wSTMD_all[:,1])};'
+    #       f'LPTC_baseline:{np.sum(LPTC_baseline)}')
+    
+    print(f'{np.sum(LPTC_baseline)},{np.mean(spontaneous)}')
 
 # print(f'{t},{np.sum(EMD_Output_right)},{np.sum(EMD_Output_down)}')
 
@@ -842,7 +873,9 @@ if nominal_folder in root:
     print(nominal_folder, f'{success_MATLAB_counter[0][-1]/total_frames*100},'
           f'{success_MATLAB_counter[1][-1]/total_frames*100},'
           f'{success_python_counter[-1]/total_frames*100}')
-# ESTMD_delay(ESTMD_Output, bbox_ds, delay=delay)
+
+if any(x in root for x in [nominal_folder, 'botanic']):
+    ESTMD_delay(ESTMD_Output, bbox_ds, delay=delay)
 
 def success_plots(success_MATLAB_counter, success_python_counter):
     fig, axes = plt.subplots(figsize=(12,9))
