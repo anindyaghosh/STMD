@@ -5,7 +5,7 @@
 clear all
 
 %% CHANGE THIS NUMBER TO LOAD DIFFERENT BACKGROUND CONDITIONS!!!
-filename_toload= 2; 
+filename_toload= 7; 
 
 %%  Open Folder containing dataset to analyse
 
@@ -93,7 +93,7 @@ Target_RawData=rawdata_temp(1:round(total_frames/frame_rate * sf));
 
 % Entire Trial - Raw Data - FIGURE 4       
 figure(4),clf
-set(gcf, 'Position', [0 650 400 300]);
+% set(gcf, 'Position', [0 650 400 300]);
 plot(time_axis_target, Target_RawData,'k')
 ylabel('Spike Amplitude (µV)')
 xlabel('Time (sec)')
@@ -106,7 +106,7 @@ xlim ([time_axis_target(1) time_axis_target(end)]);
 
 % Entire Trial - Discrimated Unit - FIGURE 5
 figure(5),clf
-set(gcf, 'Position', [400 650 400 300]);
+% set(gcf, 'Position', [400 650 400 300]);
 plot(time_axis_target,Target_DiscriminatedUnit,'color', 'k')
 xlabel('Time (sec)')
 title({(Background_Condition) ; ['Discriminated Unit']}) 
@@ -129,7 +129,7 @@ Target_Total_Spikes_perbin_spikerate=Target_Total_Spikes_perbin/binsize;
 target_time_axis_bins=linspace(time_axis_target(1),time_axis_target(end),no_bins);
       
 figure(6),clf
-set(gcf, 'Position', [800 650 400 300]);
+% set(gcf, 'Position', [800 650 400 300]);
 bar(target_time_axis_bins, Target_Total_Spikes_perbin_spikerate, 'k')
 ylabel('Response (spikes.s^{-1})')
 xlabel('Time (sec)')

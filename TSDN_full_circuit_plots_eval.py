@@ -29,8 +29,8 @@ wSTMD = arr[index,2,:]
 LPTC_baseline = (arr[0,3,:].T).clip(min=0)
 
 def normalise(neuron):
-    noise = neuron[:-2,...]
-    target = neuron[-2:,...]
+    noise = neuron[:-3,...]
+    target = neuron[-3:,...]
     
     noise /= np.max(noise)
     target /= np.max(target)
@@ -54,14 +54,14 @@ for c, config in enumerate(configs):
     x = np.arange(len(neurons.keys()))
     w = 0.5
     labels = []
-    mapping_table = str.maketrans({' ': '\n', '-': '-\n'})
+    mapping_table = str.maketrans({' ':'\n', '-':'-\n', '#':''})
     for i in neurons.keys():
         labels.append(i.split('_noise')[0].translate(mapping_table))
     plt.xticks(x, labels)
     ax2 = axes.twinx()
     
-    TSDN = axes.bar(x[:-2], config[:-2], width=w, align='center', edgecolor='black')
-    target_bg = ax2.bar(x[-2:], config[-2:], width=w, align='center', color='#ff7f0e', edgecolor='black')
+    TSDN = axes.bar(x[:-3], config[:-3], width=w, align='center', edgecolor='black')
+    target_bg = ax2.bar(x[-3:], config[-3:], width=w, align='center', color='#ff7f0e', edgecolor='black')
     axes.set_xlabel('Relative motion')
     axes.set_ylabel('TSDN activity [a.u.]')
     ax2.set_ylabel('TSDN activity [a.u.]')
