@@ -9,9 +9,9 @@ import json
 
 from receptive_field_array import RF_array
 
-neurons = {"TSDN" : {"sigma_vals":12.74, "centre":[0, 45]}, 
-           "dSTMD" : {"sigma_vals":3, "centre":[0, 55]}, 
-           "wSTMD" : {"sigma_vals":[16.99, 16.99], "centre":[5, 55]}}
+neurons = {"TSDN" : {"sigma_vals":12.74, "centre":[20, 45]}, 
+           "dSTMD" : {"sigma_vals":3, "centre":[20, 55]}, 
+           "wSTMD" : {"sigma_vals":[16.99, 16.99], "centre":[20, 55]}}
            # "wSTMD" : {"sigma_vals":[21.23, 16.99], "centre":[0, 55]}}
 
 class receptive_fields:

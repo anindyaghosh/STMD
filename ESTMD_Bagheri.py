@@ -78,7 +78,7 @@ exts = ['.jpg', '.png']
 files = [file for file in os.listdir(root) if (file.endswith(tuple(exts)) and 'IMG' in file)]
 
 photo_z = {"b" : np.array([0, 0.0001, -0.0011, 0.0052, -0.0170, 0.0439, -0.0574, 0.1789, -0.1524]), 
-           "a" : np.array([1, -4.3331, 8.6847, -10.7116, 9.0004, -5.3058, 2.1448, -0.5418, 0.0651])}
+            "a" : np.array([1, -4.3331, 8.6847, -10.7116, 9.0004, -5.3058, 2.1448, -0.5418, 0.0651])}
 
 """
 TAU for FDSR and LPF5, z-transforms
@@ -98,9 +98,9 @@ CSA_KERNEL = np.asarray([[-1, -1, -1],
                          [-1, -1, -1]]) * 1/9
 
 FDSR_TAU_FAST_ON = 0.5/50 * Ts*1000
-FDSR_TAU_FAST_OFF = 0.25/50 * Ts*1000
+FDSR_TAU_FAST_OFF = 0.5/50 * Ts*1000
 
-FDSR_TAU_SLOW = 5.0/50 * Ts*1000 # 5
+FDSR_TAU_SLOW = 5.0/50 * Ts*1000
 
 FDSR_K_FAST_ON = np.exp(-1*Ts / FDSR_TAU_FAST_ON)
 FDSR_K_FAST_OFF = np.exp(-1*Ts / FDSR_TAU_FAST_OFF)
@@ -109,18 +109,12 @@ FDSR_K_SLOW = np.exp(-1*Ts / FDSR_TAU_SLOW)
 
 LPF5_K = np.exp(-1*0.05 / LPF5_TAU)
 
-INHIB_KERNEL = 0.7 * np.array([[-1, -1, -1, -1, -1],
-                               [-1, 0, 0, 0, -1],
-                               [-1, 0, 2, 0, -1],
-                               [-1, 0, 0, 0, -1],
-                               [-1, -1, -1, -1, -1]])
-
 # 1D kernel
-INHIB_KERNEL = np.array([[-1],
-                          [0],
-                          [2],
-                          [0],
-                          [-1]])
+# INHIB_KERNEL = np.array([[-8],
+#                           [0],
+#                           [2],
+#                           [0],
+#                           [-8]])
 
 # INHIB_KERNEL = np.array([[-1, -1, -1, -1, -1],
 #                           [-1, -1, -1, -1, -1],
@@ -266,7 +260,7 @@ def image_generation(timestep, mode=None, clutter=None):
     # Height tuning
     if mode == 'height':
         target_speed = (50/1000) * pixels_per_degree # 50 degrees per second
-        target_size = round(2.1 * pixels_per_degree)
+        target_size = int(args.value * pixels_per_degree)
         
     # Velocity tuning
     elif mode == 'velocity':
@@ -283,29 +277,32 @@ def image_generation(timestep, mode=None, clutter=None):
         images = mean_magnitude
     
     # Position of target based on target speed
-    x_loc = round(target_speed * timestep)
+    x_loc = int(target_speed * timestep)
     
-    start = (10, 20) # (10, 20)
+    start = (20, 20) # (20, 20)
     
     # Define dark target
-    images[start[0]:start[0]+target_size, start[1]+x_loc:start[1]+x_loc+target_size] = 0
-    # images[start[0]:start[0]+target_size, start[1]+x_loc:start[1]+round(x_loc+pixels_per_degree * 0.8)] = 0
+    # To ensure rollover
+    start_coord = (start[1]+x_loc) - ((start[1]+x_loc) // images.shape[1]) * images.shape[1]
+    # start_coord = start[1]+x_loc
+    # images[start[0]:start[0]+target_size, start_coord:start_coord+target_size] = 0
+    images[start[0]:start[0]+target_size, start_coord:start_coord+int(pixels_per_degree * 0.8)] = 0
     
     save_dir = os.path.join(os.getcwd(), 'Bagheri', 'Tuning')
     os.makedirs(save_dir, exist_ok=True)
     cv2.imwrite(os.path.join(save_dir, naming_convention(timestep+1) + '.png'), images)
     
 if tuning_folder in root:
-    for t in range(3500):
-        image_generation(t, mode='velocity', clutter=None)
+    for t in range(1500):
+        image_generation(t, mode='height', clutter=None)
         
 def indices_of_max_value(arr):
     # Used to find indices of max value in array (ESTMD_Output)
-    # Target in second row
-    arr_sub = arr[2,:,:]
+    # Target in fourth row
+    arr_sub = arr[4,:,:]
     return np.unravel_index(np.argmax(arr_sub, axis=None), arr_sub.shape)
     
-def tuning_plots(mode, bar=False, velocity_wiederman=False):
+def tuning_plots(mode, bar=False, velocity_wiederman=False, latency=False):
     if mode == 'height':
         tuning_array_file = 'height_tuning_ESTMD.txt'
         if bar:
@@ -325,7 +322,7 @@ def tuning_plots(mode, bar=False, velocity_wiederman=False):
             tuning_array.append(values)
     
     tuning_array = np.asarray(tuning_array).T
-    tuning_array[1,:] = tuning_array[1,:]/np.max(tuning_array[1,:])
+    tuning_array[1,:] = tuning_array[1,:] / np.max(tuning_array[1,:])
     
     import pandas as pd
     
@@ -342,27 +339,29 @@ def tuning_plots(mode, bar=False, velocity_wiederman=False):
     
     fig, axes = plt.subplots(figsize=(7,6), dpi=500)
     
-    ax2 = axes.twinx()
     if bar:
         wiederman, physiology = read_csv('C:/Users/ag803/STMD/STMD paper assets/wpd_datasets_size.csv')
         estmd = axes.plot(tuning_array[0,:], tuning_array[1,:], '-o', label='ESTMD model reproduction', markersize=6, color='crimson')
-        wiederman_model = axes.plot(wiederman[:,0], wiederman[:,1], '-^', label='Wiederman et al. (2008) model', markersize=6, color='black')
-        ephys = ax2.errorbar(physiology[::3,0], physiology[::3,1], yerr=np.abs(np.c_[physiology[2::3,1], physiology[1::3,1]].T - physiology[::3,1]), 
+        wiederman_model = axes.plot(wiederman[:,0], wiederman[:,1] / np.max(wiederman[:,1]), '-^', label='Wiederman et al. (2008) model', markersize=6, color='black')
+        ephys = axes.errorbar(physiology[::3,0], physiology[::3,1]  / np.max(physiology[::3,1]), yerr=np.abs(np.c_[physiology[2::3,1], physiology[1::3,1]].T - physiology[::3,1]), 
                              label='Physiology STMD', marker="s", markersize=6, color='green')
         axs = estmd + wiederman_model
+        labs1 = [l.get_label() for l in axs]
     elif mode == 'velocity' and velocity_wiederman:
         wiederman, physiology = read_csv('C:/Users/ag803/STMD/STMD paper assets/wpd_datasets_velocity.csv')
         estmd = axes.plot(tuning_array[0,:], tuning_array[1,:], '-o', label='ESTMD model reproduction', markersize=6, color='crimson')
-        wiederman_model = axes.plot(wiederman[:,0], wiederman[:,1], '-^', label='Wiederman et al. (2008) model', markersize=6, color='black')
-        ephys = ax2.errorbar(physiology[::3,0], physiology[::3,1], yerr=np.abs(np.c_[physiology[2::3,1], physiology[1::3,1]].T - physiology[::3,1]), 
+        wiederman_model = axes.plot(wiederman[:,0], wiederman[:,1] / np.max(wiederman[:,1]), '-^', label='Wiederman et al. (2008) model', markersize=6, color='black')
+        ephys = axes.errorbar(physiology[::3,0], physiology[::3,1] / np.max(physiology[::3,1]), yerr=np.abs(np.c_[physiology[2::3,1], physiology[1::3,1]].T - physiology[::3,1]), 
                               label='Physiology STMD', marker="s", markersize=6, color='green')
         axs = estmd + wiederman_model
+        labs1 = [l.get_label() for l in axs]
+    elif latency:
+        axes.plot(tuning_array[0,:], tuning_array[2,:], '-r^', markersize=4)
     else:
-        estmd = axes.plot(tuning_array[0,:], tuning_array[1,:], '-o', label='ESTMD model reproduction', markersize=6)
-        ax_latency = ax2.plot(tuning_array[0,:], tuning_array[2,:], 'r^', label='Latency', markersize=4)
-        axs = estmd + ax_latency
-        
-    labs1 = [l.get_label() for l in axs]
+        axes.plot(tuning_array[0,:], tuning_array[1,:], '-o', markersize=6)
+        if mode == 'height':
+            axes.axvline(x=1.6, color='black', linestyle='dashed')
+    axes.set_xlim([0, None])
     
     # if mode == 'velocity':
     #     col = np.argwhere(tuning_array == 300)[0][1]
@@ -374,18 +373,18 @@ def tuning_plots(mode, bar=False, velocity_wiederman=False):
         else:
             axes.set_xlim([1, 1000])
         axes.set_xscale('log')
-        ax2.set_ylabel('STMD response (normalised)')
         axes.legend(axs + [ephys[0]], labs1 + [ephys.get_label()])
-        axes.set_ylim([0, None])
-        ax2.set_ylim([0, None])
-    else:
-        if mode == 'velocity' and not velocity_wiederman:
+    elif mode == 'velocity':
+        if (mode == 'velocity' and not velocity_wiederman) or latency:
             axes.set_xscale('log')
-        axes.legend(axs, labs1, loc='upper center')
-        ax2.set_ylabel('Latency [ms]')
+            axes.set_xlim([1, 1000])
+    axes.set_ylim([0, None])
     axes.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: '{:g}'.format(x)))
     axes.set_xlabel(label)
-    axes.set_ylabel('ESTMD Model Response (normalised)')
+    if latency:
+        axes.set_ylabel('Latency (ms)')
+    else:
+        axes.set_ylabel('ESTMD Response (normalised)')
     
 # tuning_plots('height', bar=True)
 
@@ -564,7 +563,22 @@ def initialisations(degrees_in_image):
     pixel2PR = int(pixels_per_degree)
     ds_size = (tuple(int(np.ceil(x/pixel2PR)) for x in image_size))
     
-    return image_size, ds_size
+    # INHIB_KERNEL = 0.5 * np.array([[-1, -1, -1, -1, -1],
+    #                                 [-1, 0, 0, 0, -1],
+    #                                 [-1, 0, 0, 0, -1],
+    #                                 [-1, 0, 0, 0, -1],
+    #                                 [-1, -1, -1, -1, -1]])
+    
+    INHIB_KERNEL = np.zeros((pixel2PR, pixel2PR))
+    
+    INHIB_WEIGHT = -1
+    
+    INHIB_KERNEL[[0,pixel2PR-1], :] = INHIB_WEIGHT
+    INHIB_KERNEL[1:-1, [0,pixel2PR-1]] = INHIB_WEIGHT
+    
+    INHIB_KERNEL[int(pixel2PR/2), int(pixel2PR/2)] = 2
+    
+    return image_size, ds_size, 1.2*INHIB_KERNEL
 
 def matlab_style_gauss2D(shape, sigma):
     """
@@ -594,15 +608,15 @@ def matlab_style_conv2(x, y, mode='same', **kwargs):
     return convolved[pad_width:-pad_width, pad_width:-pad_width]
     
 degrees_in_image = desired_resolution[1]
-image_size, ds_size = initialisations(degrees_in_image)
+image_size, ds_size, INHIB_KERNEL = initialisations(degrees_in_image)
 
 # sf = np.zeros((*image_size, len(files)))
 on_f = np.zeros((*ds_size, len(files)), dtype=np.float16)
 off_f = np.zeros_like(on_f)
 fdsr_on = np.zeros_like(on_f)
 fdsr_off = np.zeros_like(on_f)
-delayed_on = np.zeros_like(on_f)
-delayed_off = np.zeros_like(on_f)
+# delayed_on = np.zeros_like(on_f)
+# delayed_off = np.zeros_like(on_f)
 ESTMD_Output = np.zeros_like(on_f)
 RTC_Output = np.zeros_like(on_f)
 
@@ -643,6 +657,7 @@ for t, file in enumerate(files):
     sigma = 1.4 / (2 * np.sqrt(2 * np.log(2)))
     sigma_pixel = sigma * pixels_per_degree # sigma_pixel = (sigma in degrees (0.59))*pixels_per_degree
     kernel_size = int(6 * sigma_pixel - 1)
+    pad_width = int(kernel_size / 2)
     
     """Downsampling receptive fields"""
     if EMD_folder in root:
@@ -651,7 +666,7 @@ for t, file in enumerate(files):
     # Spatial filtered through LPF1
     # Gaussian kernel
     H = matlab_style_gauss2D(shape=(kernel_size, kernel_size), sigma=sigma_pixel)
-    sf = matlab_style_conv2(green, H, mode='same', pad_width=6)
+    sf = matlab_style_conv2(green, H, mode='same', pad_width=pad_width)
     
     # Scipy's way - Interpolation is too good for puny humans
     # sf = gaussian_filter(green, radius=kernel_size, sigma=sigma_pixel)
@@ -659,8 +674,8 @@ for t, file in enumerate(files):
     # Downsampled green channel
     # Subsampling vs Downsampling
     # XXX: Downsampling makes more sense. Check how much the change affects results after everything is working
-    # DownsampledGreen = sf[::pixel2PR, ::pixel2PR]
-    DownsampledGreen = cv2.resize(sf, np.flip(ds_size), interpolation=cv2.INTER_NEAREST)
+    DownsampledGreen = sf[::pixel2PR, ::pixel2PR]
+    # DownsampledGreen = cv2.resize(sf, np.flip(ds_size), interpolation=cv2.INTER_NEAREST)
     
     # visualise([DownsampledGreen], folder_name('STNS3_downsampled'), title=[number])
     
@@ -676,11 +691,10 @@ for t, file in enumerate(files):
     
     # Photoreceptor output after temporal band-pass filtering
     PhotoreceptorOut, dbuffer1 = IIR_Filter(photo_z["b"], photo_z["a"], DownsampledGreen/255, dbuffer1)
-    
     # visualise([PhotoreceptorOut], folder_name('STNS3_photoreceptor'), title=[number])
     
     # LMC output after spatial high pass filtering
-    LMC_Out = matlab_style_conv2(PhotoreceptorOut, CSA_KERNEL, mode='same', pad_width=2)
+    LMC_Out = matlab_style_conv2(PhotoreceptorOut, CSA_KERNEL, mode='same', pad_width=pad_width)
     
     # visualise([LMC_Out], folder_name('STNS3_LMC'), title=[number])
     
@@ -693,8 +707,8 @@ for t, file in enumerate(files):
     
     if t > 0:
         # FDSR Implementation
-        k_on = np.where((on_f[:,:,t] - on_f[:,:,t-1]) > 0.0, FDSR_K_FAST_ON, FDSR_K_SLOW)
-        k_off = np.where((off_f[:,:,t] - off_f[:,:,t-1]) > 0.0, FDSR_K_FAST_OFF, FDSR_K_SLOW)
+        k_on = np.where((on_f[:,:,t] - on_f[:,:,t-1]) > 0.01, FDSR_K_FAST_ON, FDSR_K_SLOW)
+        k_off = np.where((off_f[:,:,t] - off_f[:,:,t-1]) > 0.01, FDSR_K_FAST_OFF, FDSR_K_SLOW)
         # Doesn't match Weiderman paper but is the only thing that makes sense
         
         # Apply low-pass filters to on and off channels
@@ -702,16 +716,19 @@ for t, file in enumerate(files):
         fdsr_off[:,:,t] = ((1.0 - k_off) * off_f[:,:,t]) + (k_off * fdsr_off[:,:,t-1])
         
         # Subtract FDSR from half-wave rectified
-        a_on = (on_f[:,:,t] - fdsr_on[:,:,t]).clip(min=0)
-        a_off = (off_f[:,:,t] - fdsr_off[:,:,t]).clip(min=0)
+        # a_on = (on_f[:,:,t] - fdsr_on[:,:,t]).clip(min=0)
+        # a_off = (off_f[:,:,t] - fdsr_off[:,:,t]).clip(min=0)
+        
+        a_on = on_f[:,:,t].clip(min=0)
+        a_off = off_f[:,:,t].clip(min=0)
         
         # visualise([a_off], folder_name('STNS3_off_FDSR'), title=[number])
         
         # Inhibition is implemented as spatial filter
         # Not true if this is a chemical synapse as this would require delays
         # Half-wave rectification added
-        on_filtered = matlab_style_conv2(a_on, INHIB_KERNEL, mode='same', pad_width=4).clip(min=0)
-        off_filtered = matlab_style_conv2(a_off, INHIB_KERNEL, mode='same', pad_width=4).clip(min=0)
+        on_filtered = matlab_style_conv2(a_on, INHIB_KERNEL, mode='same', pad_width=pad_width).clip(min=0)
+        off_filtered = matlab_style_conv2(a_off, INHIB_KERNEL, mode='same', pad_width=pad_width).clip(min=0)
         
         # visualise([off_filtered], folder_name('STNS3_off_FDSR'), title=[number])
         
@@ -739,8 +756,8 @@ for t, file in enumerate(files):
         Correlate_OFF_ON = np.zeros_like(Correlate_OFF_ON)
         
         RTC_Output[:,:,t] = (Correlate_ON_OFF + Correlate_OFF_ON) * 6
-        ESTMD_Output[:,:,t] = (RTC_Output[:,:,t] - 0.01).clip(min=0) # 0.01
-        ESTMD_Output[:,:,t] = np.tanh(ESTMD_Output[:,:,t])
+        ESTMD_Output[:,:,t] = (RTC_Output[:,:,t] - 0.1).clip(min=0)
+        # ESTMD_Output[:,:,t] = np.tanh(ESTMD_Output[:,:,t])
         
 #     """
 #     ESTMD -> EMD -- Directionally selective STMD
@@ -904,10 +921,20 @@ def success_plots(success_MATLAB_counter, success_python_counter):
     
 # success_plots(success_MATLAB_counter, success_python_counter)
 
+def latency(arr):
+    activations = []
+    for t in range(arr.shape[-1]):
+        activations.append(np.sum((arr[...,t] - 0.01).clip(min=0)))
+    activations_adjusted = np.flatnonzero(activations)
+    if len(activations_adjusted) > 0:
+        return activations_adjusted[0]
+    else:
+        return None
+
 # For quick shell script
 if tuning_folder in root:
     # print(f'{args.value},{ESTMD_Output[(2,)+indices_of_max_value(ESTMD_Output)]},{indices_of_max_value(ESTMD_Output)[-1]}')
-    print(f'{args.value},{np.sum(ESTMD_Output)},{indices_of_max_value(ESTMD_Output)[-1]}')
+    print(f'{args.value},{np.sum(ESTMD_Output)},{latency(ESTMD_Output)}')
 
 # print(f'{args.value},{np.sum(ESTMD_Output[205 // pixel2PR:(221 // pixel2PR) + 1,...])}')
 # print(f'{args.value},{np.sum(ESTMD_Output)}')

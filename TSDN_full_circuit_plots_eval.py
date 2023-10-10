@@ -1,7 +1,17 @@
 import matplotlib.pyplot as plt
+from matplotlib.offsetbox import OffsetImage, AnnotationBbox
 import numpy as np
 
-from helper_functions import set_size
+# from helper_functions import set_size
+
+images = ["clutter image.png", "all target image.png"]
+
+def offset_image(x, y, image, ax):
+    img = plt.imread(image)
+    im = OffsetImage(img, zoom=0.3)
+    im.image.axes = ax
+    ab = AnnotationBbox(im, (x, y), xycoords='axes fraction', frameon=False, pad=0)
+    ax.add_artist(ab)
 
 with open('TSDN_full_circuit_plots.txt', 'r') as f:
     neurons = {}
@@ -70,6 +80,8 @@ for c, config in enumerate(configs):
     else:
         loc = 'best'
     plt.legend([TSDN, target_bg], ['clutter', 'target background'], loc=loc)
+    offset_image(0.11, -0.25, images[0], axes)
+    offset_image(0.72, -0.25, images[1], axes)
     
 with open('LPTC_velocity_tuning.txt', 'r') as f:
     LPTC_results = []
@@ -84,3 +96,11 @@ axes.plot(LPTC_results[:,0], LPTC_results[:,2], label='LPTC spontaneous activity
 axes.set_xlabel('Background velocity [$\degree$/s]')
 axes.set_ylabel('LPTC activation [a.u.]')
 plt.legend()
+
+"""
+0. STMD_right - LPTC_right -- (Standard model)
+1. STMD_right + ReLU(LPTC_right - LPTC_left) -- (Option 1a)
+2. STMD_right - LPTC_right + wSTMD -- (Option 2b)
+3. STMD_right + ReLU(LPTC_right - LPTC_left) + wSTMD -- (Hybrid of options 1a and 2b)
+4. STMD_right - independent LPTC -- (Option 2b)
+"""
