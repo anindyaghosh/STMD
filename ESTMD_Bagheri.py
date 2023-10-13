@@ -109,8 +109,14 @@ FDSR_K_SLOW = np.exp(-1*Ts / FDSR_TAU_SLOW)
 
 LPF5_K = np.exp(-1*0.05 / LPF5_TAU)
 
+INHIB_KERNEL = 1.2 * np.array([[-1, -1, -1, -1, -1],
+                                [-1, 0, 0, 0, -1],
+                                [-1, 0, 2, 0, -1],
+                                [-1, 0, 0, 0, -1],
+                                [-1, -1, -1, -1, -1]])
+
 # 1D kernel
-# INHIB_KERNEL = np.array([[-8],
+# INHIB_KERNEL = 1.2 * np.array([[-8],
 #                           [0],
 #                           [2],
 #                           [0],
@@ -206,13 +212,13 @@ def create_botanic_panorama():
     
     # Target size definitions
     pixels_per_degree = image.shape[1]/360
-    target_size = round(2.1 * pixels_per_degree) # 2.8 degrees is optimal target size
+    target_size = round(1.6 * pixels_per_degree) # 2.8 degrees is optimal target size
     start = (205, 1225) # 770
     
     image[start[0]:start[0]+target_size, start[1]:start[1]+target_size,:] = 0
         
     # Calculate velocity of image
-    velocity = (160/1000) * pixels_per_degree # 130 degrees/second gives optimal latency of 29 ms in desired response range
+    velocity = (90/1000) * pixels_per_degree # 130 degrees/second gives optimal latency of 29 ms in desired response range
     velocity *= (Ts*1000) # Sample every 1 timestep (ms)
     
     with open(os.path.join(root, 'GroundTruth.txt'), 'w') as f:
@@ -260,7 +266,7 @@ def image_generation(timestep, mode=None, clutter=None):
     # Height tuning
     if mode == 'height':
         target_speed = (50/1000) * pixels_per_degree # 50 degrees per second
-        target_size = int(args.value * pixels_per_degree)
+        target_size = int(2.1 * pixels_per_degree)
         
     # Velocity tuning
     elif mode == 'velocity':
@@ -286,7 +292,7 @@ def image_generation(timestep, mode=None, clutter=None):
     start_coord = (start[1]+x_loc) - ((start[1]+x_loc) // images.shape[1]) * images.shape[1]
     # start_coord = start[1]+x_loc
     # images[start[0]:start[0]+target_size, start_coord:start_coord+target_size] = 0
-    images[start[0]:start[0]+target_size, start_coord:start_coord+int(pixels_per_degree * 0.8)] = 0
+    images[start[0]:start[0]+target_size, start_coord:start_coord+int(pixels_per_degree * 8)] = 0
     
     save_dir = os.path.join(os.getcwd(), 'Bagheri', 'Tuning')
     os.makedirs(save_dir, exist_ok=True)
@@ -294,7 +300,7 @@ def image_generation(timestep, mode=None, clutter=None):
     
 if tuning_folder in root:
     for t in range(1500):
-        image_generation(t, mode='height', clutter=None)
+        image_generation(t, mode='velocity', clutter=None)
         
 def indices_of_max_value(arr):
     # Used to find indices of max value in array (ESTMD_Output)
@@ -309,6 +315,9 @@ def tuning_plots(mode, bar=False, velocity_wiederman=False, latency=False):
             tuning_array_file = 'tuning_plots_height_bar.txt'
         label = 'Target Height [$\degree$]'
     elif mode == 'velocity':
+        tuning_array_file = 'velocity_tuning_ESTMD.txt'
+        label = 'Target Velocity [$\degree$/s]'
+    elif mode == 'FDSR':
         tuning_array_file = 'velocity_tuning_ESTMD.txt'
         label = 'Target Velocity [$\degree$/s]'
     else:
@@ -355,8 +364,23 @@ def tuning_plots(mode, bar=False, velocity_wiederman=False, latency=False):
                               label='Physiology STMD', marker="s", markersize=6, color='green')
         axs = estmd + wiederman_model
         labs1 = [l.get_label() for l in axs]
+    elif mode == 'FDSR':
+        estmd = axes.plot(tuning_array[0,:], tuning_array[1,:], '-', label='$\\tau_{FAST}=10 ms$, $\\tau_{SLOW}=100 ms$', markersize=6, color='crimson')
+        df = pd.read_csv('STMD paper assets/FDSR_tuning.csv')
+        FDSR_arr = df.iloc[:,:].to_numpy()[1:].astype(float)
+
+        tau_fast = axes.plot(FDSR_arr[:,0], FDSR_arr[:,1] / np.max(FDSR_arr[:,1]), '-', 
+                             label='$\\tau_{FAST}=5 ms$, $\\tau_{SLOW}=100 ms$', markersize=6, color='blue')
+        tau_slow = axes.plot(FDSR_arr[:,0], FDSR_arr[:,2] / np.max(FDSR_arr[:,2]), '-', 
+                             label='$\\tau_{FAST}=10 ms$, $\\tau_{SLOW}=50 ms$', markersize=6, color='green')
+        rectangular_profile = axes.plot(FDSR_arr[:,0], FDSR_arr[:,3] / np.max(FDSR_arr[:,3]), '-', 
+                                        label='$\\tau_{FAST}=10 ms$, $\\tau_{SLOW}=100 ms$', markersize=6, color='orange')
+        axs = estmd + tau_fast + tau_slow + rectangular_profile
+        labs1 = [l.get_label() for l in axs]
     elif latency:
         axes.plot(tuning_array[0,:], tuning_array[2,:], '-r^', markersize=4)
+        axes.axhline(y=20, color='black', linestyle='dashed')
+        axes.axhline(y=40, color='black', linestyle='dashed')
     else:
         axes.plot(tuning_array[0,:], tuning_array[1,:], '-o', markersize=6)
         if mode == 'height':
@@ -378,6 +402,16 @@ def tuning_plots(mode, bar=False, velocity_wiederman=False, latency=False):
         if (mode == 'velocity' and not velocity_wiederman) or latency:
             axes.set_xscale('log')
             axes.set_xlim([1, 1000])
+    elif mode == 'FDSR':
+        axes_sqs = []
+        for i in range(len(axs)):
+            if i < 3:
+                axes_sqs.append(plt.Line2D([], [], marker="s", markersize=5, linewidth=0, color=axs[i]._color))
+            else:
+                axes_sqs.append(plt.Line2D([], [], marker="s", markersize=5, linewidth=6, color=axs[i]._color))
+        axes.legend(axes_sqs, labs1)
+        axes.set_xlim([1, 1000])
+        axes.set_xscale('log')
     axes.set_ylim([0, None])
     axes.xaxis.set_major_formatter(ticker.FuncFormatter(lambda x, _: '{:g}'.format(x)))
     axes.set_xlabel(label)
@@ -563,22 +597,7 @@ def initialisations(degrees_in_image):
     pixel2PR = int(pixels_per_degree)
     ds_size = (tuple(int(np.ceil(x/pixel2PR)) for x in image_size))
     
-    # INHIB_KERNEL = 0.5 * np.array([[-1, -1, -1, -1, -1],
-    #                                 [-1, 0, 0, 0, -1],
-    #                                 [-1, 0, 0, 0, -1],
-    #                                 [-1, 0, 0, 0, -1],
-    #                                 [-1, -1, -1, -1, -1]])
-    
-    INHIB_KERNEL = np.zeros((pixel2PR, pixel2PR))
-    
-    INHIB_WEIGHT = -1
-    
-    INHIB_KERNEL[[0,pixel2PR-1], :] = INHIB_WEIGHT
-    INHIB_KERNEL[1:-1, [0,pixel2PR-1]] = INHIB_WEIGHT
-    
-    INHIB_KERNEL[int(pixel2PR/2), int(pixel2PR/2)] = 2
-    
-    return image_size, ds_size, 1.2*INHIB_KERNEL
+    return image_size, ds_size
 
 def matlab_style_gauss2D(shape, sigma):
     """
@@ -608,7 +627,7 @@ def matlab_style_conv2(x, y, mode='same', **kwargs):
     return convolved[pad_width:-pad_width, pad_width:-pad_width]
     
 degrees_in_image = desired_resolution[1]
-image_size, ds_size, INHIB_KERNEL = initialisations(degrees_in_image)
+image_size, ds_size = initialisations(degrees_in_image)
 
 # sf = np.zeros((*image_size, len(files)))
 on_f = np.zeros((*ds_size, len(files)), dtype=np.float16)
@@ -645,7 +664,7 @@ for t, file in enumerate(files):
             image_save = cv2.rectangle(image.copy(), (bbox[0], bbox[1]), (bbox[2], bbox[3]), (0, 0, 255), 2)
             number = naming_convention(t+1)
             rf = True if 'EMD' in root else False
-            # visualise([image_save], folder_name('vid_images'), title=[number], rf=rf)
+            # visualise([image_save[165:265, 1124:1398]], folder_name('vid_images'), title=[number], rf=rf)
     
     # Extract green channel from BGR
     green = image[:,:,1]
@@ -674,8 +693,8 @@ for t, file in enumerate(files):
     # Downsampled green channel
     # Subsampling vs Downsampling
     # XXX: Downsampling makes more sense. Check how much the change affects results after everything is working
-    DownsampledGreen = sf[::pixel2PR, ::pixel2PR]
-    # DownsampledGreen = cv2.resize(sf, np.flip(ds_size), interpolation=cv2.INTER_NEAREST)
+    # DownsampledGreen = sf[::pixel2PR, ::pixel2PR]
+    DownsampledGreen = cv2.resize(sf, np.flip(ds_size), interpolation=cv2.INTER_NEAREST)
     
     # visualise([DownsampledGreen], folder_name('STNS3_downsampled'), title=[number])
     
@@ -716,13 +735,10 @@ for t, file in enumerate(files):
         fdsr_off[:,:,t] = ((1.0 - k_off) * off_f[:,:,t]) + (k_off * fdsr_off[:,:,t-1])
         
         # Subtract FDSR from half-wave rectified
-        # a_on = (on_f[:,:,t] - fdsr_on[:,:,t]).clip(min=0)
-        # a_off = (off_f[:,:,t] - fdsr_off[:,:,t]).clip(min=0)
+        a_on = (on_f[:,:,t] - fdsr_on[:,:,t]).clip(min=0)
+        a_off = (off_f[:,:,t] - fdsr_off[:,:,t]).clip(min=0)
         
-        a_on = on_f[:,:,t].clip(min=0)
-        a_off = off_f[:,:,t].clip(min=0)
-        
-        # visualise([a_off], folder_name('STNS3_off_FDSR'), title=[number])
+        # visualise([a_off], folder_name('botanic_off_FDSR'), title=[number])
         
         # Inhibition is implemented as spatial filter
         # Not true if this is a chemical synapse as this would require delays
@@ -730,10 +746,8 @@ for t, file in enumerate(files):
         on_filtered = matlab_style_conv2(a_on, INHIB_KERNEL, mode='same', pad_width=pad_width).clip(min=0)
         off_filtered = matlab_style_conv2(a_off, INHIB_KERNEL, mode='same', pad_width=pad_width).clip(min=0)
         
-        # visualise([off_filtered], folder_name('STNS3_off_FDSR'), title=[number])
-        
         # visualise([on_filtered], folder_name('STNS3_off_filtered_images_2D'), title=[number])
-        # visualise([off_filtered], folder_name('STNS3_off_filtered_images_2D'), title=[number])
+        # visualise([off_filtered], folder_name('botanic_off_filtered_images_2D'), title=[number])
         
         try:
             ONbuffer
@@ -756,7 +770,7 @@ for t, file in enumerate(files):
         Correlate_OFF_ON = np.zeros_like(Correlate_OFF_ON)
         
         RTC_Output[:,:,t] = (Correlate_ON_OFF + Correlate_OFF_ON) * 6
-        ESTMD_Output[:,:,t] = (RTC_Output[:,:,t] - 0.1).clip(min=0)
+        ESTMD_Output[:,:,t] = (RTC_Output[:,:,t]).clip(min=0)
         # ESTMD_Output[:,:,t] = np.tanh(ESTMD_Output[:,:,t])
         
 #     """
@@ -904,8 +918,8 @@ if nominal_folder in root:
           f'{success_MATLAB_counter[1][-1]/total_frames*100},'
           f'{success_python_counter[-1]/total_frames*100}')
 
-# if any(x in root for x in [nominal_folder, 'botanic']):
-#     ESTMD_delay(ESTMD_Output, bbox_ds, delay=delay)
+if any(x in root for x in [nominal_folder, 'botanic']):
+    ESTMD_delay(ESTMD_Output, bbox_ds, delay=delay)
 
 def success_plots(success_MATLAB_counter, success_python_counter):
     fig, axes = plt.subplots(figsize=(12,9))
@@ -934,7 +948,8 @@ def latency(arr):
 # For quick shell script
 if tuning_folder in root:
     # print(f'{args.value},{ESTMD_Output[(2,)+indices_of_max_value(ESTMD_Output)]},{indices_of_max_value(ESTMD_Output)[-1]}')
-    print(f'{args.value},{np.sum(ESTMD_Output)},{latency(ESTMD_Output)}')
+    # print(f'{args.value},{np.sum(ESTMD_Output)},{latency(ESTMD_Output)}')
+    print(f'{np.sum(ESTMD_Output)}')
 
 # print(f'{args.value},{np.sum(ESTMD_Output[205 // pixel2PR:(221 // pixel2PR) + 1,...])}')
 # print(f'{args.value},{np.sum(ESTMD_Output)}')
