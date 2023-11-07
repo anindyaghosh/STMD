@@ -11,7 +11,7 @@ filename_toload= 7;
 
 selpath=uigetdir; % Select folder containing example data 
 cd(selpath)
-search_term='*Target_SineGrating*';
+search_term='*TargetRight*';
 
 binsize= 0.02; %bin size 20ms
 Number_of_Layers=2;

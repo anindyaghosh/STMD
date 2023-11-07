@@ -13,7 +13,7 @@ PRSIM_TimeAxisHistogram example_histogramtouse ExampleExptDate ExampleNP
 search_term='*-Target_SineGrating-*';
 [indata,filenames] = Dataload_Extracellular(search_term,2); %Loads all files in the current folder containing the text in quotes and that many layers
 unit_number =  1;
-TSDN 
+
 %% Check Sampling Frequency
 
 screen_width=indata{2,1}.debugData.screenData.rect(3);

@@ -5,7 +5,6 @@ import itertools
 import math
 import matplotlib.pyplot as plt
 import numpy as np
-import cv2
 
 def RF_array(mean: list, sigma: list, overlap: float, screen_resolution: list, vf:np.ndarray):
     # Radius of circle = half_width of half maximum
@@ -48,9 +47,9 @@ def RF_array(mean: list, sigma: list, overlap: float, screen_resolution: list, v
     coordinates_pixels2degrees[:,1] = np.abs(coordinates_pixels2degrees[:,1])
     
     fig, axes = plt.subplots(dpi=500)
-    axes.scatter(coordinates_pixels2degrees[:,0], coordinates_pixels2degrees[:,1], s=5)
+    axes.scatter(coordinates_pixels2degrees[:,0], coordinates_pixels2degrees[:,1], s=15)
     x_extent, y_extent = screen_resolution / 2
-    axes.imshow(TSDN_rf, extent=[-x_extent, x_extent, -y_extent, y_extent])
+    axes.imshow(TSDN_rf[:,int(TSDN_rf.shape[1] / 2):], extent=[0, x_extent, -y_extent, y_extent])
     axes.grid()
     axes.set_xlabel('Azimuth [$^\circ$]')
     axes.set_ylabel('Elevation [$^\circ$]')

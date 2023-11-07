@@ -3,7 +3,7 @@ function [indata,filenames] = Dataload_Extracellular(search_term,layers)
 % search criteria provided. The number of layers corresponds to the
 % number of layers used for the visual stimulus. 
 % Unlike Dataload_RawData it does not load the undiscriminated dataset
-filelist = dir(search_term);
+filelist = dir(fullfile('230214_N01P01_TSDN', search_term));
 filenames = {filelist.name};
 nfiles = length(filenames);
 indata = cell(nfiles,1);
