@@ -13,7 +13,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--model_type', type=str)
 parser.add_argument('--stimulus_type', type=str)
 
-args = parser.parse_args(['--model_type', 'E', '--stimulus_type', 'sinusoidal'])
+args = parser.parse_args(['--model_type', 'E', '--stimulus_type', 'starfield'])
+# args = parser.parse_args()
 
 stimuli = ['alone', 'stationary', 'background_right', 'background_left']
 
@@ -26,12 +27,28 @@ def stim_load(filename):
 
 neurons = ['STMD_R', 'STMD_L', 'LPTC_R', 'LPTC_L', 'LPTC_HR']
 
+# In frames
+pre_remaining = 5
+multiplier = 1
+post_remaining = 5
+
+pre_stim = int(pre_remaining/165 * 1000)
+stim_time = int(multiplier * 160/165 * 1000)
+post_stim = int(post_remaining/165 * 1000)
+
 stims = []
 for stim in stimuli:
     df = stim_load(stim)
     filtered_neurons = []
     for n in neurons:
-        filtered_neurons.append(filtering(df[n].to_numpy()))
+        # Quantise
+        raw = df[n].to_numpy()
+        quantised_stim = raw[pre_stim:pre_stim+stim_time][::multiplier]
+        # Join back up
+        quantised_total = np.concatenate((raw[:pre_stim], quantised_stim, raw[-post_stim:]))
+        # Low-pass filter
+        filtered = filtering(quantised_total)
+        filtered_neurons.append(filtered)
     stims.append(np.vstack(filtered_neurons))
     
 stims = np.stack(stims) # (stimuli, neurons, timesteps)
@@ -128,49 +145,50 @@ def model(params):
         else:
             print('Unknown model type')
             
-        err += np.sum((TSDN - TSDN_ephys)**2) / stims.shape[-1]
-    return np.sqrt(err)
+            # normalised RMSE
+        err += (np.sum((TSDN - TSDN_ephys)**2) / len(TSDN_ephys))
+    return np.sqrt(err / stims.shape[-1])
 
 if args.model_type == 'D':
     arguments = []
-    for STMD_R in np.arange(50, 100, 1):
-        for LPTC_R in np.arange(0.3, 1.25, 0.05):
-            for LPTC_L in np.arange(0, 1, 0.05):
+    for STMD_R in np.arange(2000, 8000, 50):
+        for LPTC_R in np.arange(5, 50, 1):
+            for LPTC_L in np.arange(0, 250, 1):
                 # for shift in np.arange(0, 1000, 25):
                 #     for LPTC_shift in np.arange(0, 1000, 25):
                 arguments.append([STMD_R, LPTC_R, LPTC_L])
                     
 elif args.model_type == 'E':
     arguments = []
-    for STMD_R in np.arange(30, 60, 1):
-        for LPTC_HR in np.arange(0, 0.1, 0.001):
+    for STMD_R in np.arange(150, 300, 0.5):
+        for LPTC_HR in np.arange(0, 0.025, 0.001):
             # for shift in np.arange(0, 1000, 25):
             #     for LPTC_shift in np.arange(0, 1000, 25):
             arguments.append([STMD_R, LPTC_HR])
             
 elif args.model_type == 'F':
     arguments = []
-    for STMD_R in np.arange(0, 70, 1):
-        for LPTC_R in [0, 0.001]:
-            for LPTC_L in np.arange(0, 3.5, 0.05):
+    for STMD_R in np.arange(150, 250, 0.5):
+        for LPTC_R in np.arange(0, 0.05, 0.001):
+            for LPTC_L in np.arange(0, 25, 0.5):
                 # for shift in np.arange(0, 1000, 25):
                 #     for LPTC_shift in np.arange(0, 1000, 25):
                 arguments.append([STMD_R, LPTC_R, LPTC_L])
                     
 elif args.model_type == 'G':
     arguments = []
-    for STMD_R in np.arange(20, 70, 1):
-        for STMD_L in np.arange(0, 15, 5):
-            for LPTC_R in np.arange(0, 0.4, 0.05):
+    for STMD_R in np.arange(200, 400, 1):
+        for STMD_L in np.arange(200, 250, 1):
+            for LPTC_R in np.arange(0, 0.001, 0.0001):
                 # for shift in np.arange(0, 1000, 25):
                     # for LPTC_shift in np.arange(0, 1000, 25):
                 arguments.append([STMD_R, STMD_L, LPTC_R])
                 
 elif args.model_type == 'H':
     arguments = []
-    for STMD_R in np.arange(20, 80, 1):
-        for LPTC_R in np.arange(0, 0.08, 0.005):
-            for LPTC_L in np.arange(0, 0.05, 0.005):
+    for STMD_R in np.arange(200, 300, 1):
+        for LPTC_R in np.arange(0, 0.01, 0.0005):
+            for LPTC_L in np.arange(0, 0.025, 0.0005):
                 # for shift in np.arange(0, 1000, 25):
                     # for LPTC_shift in np.arange(0, 1000, 25):
                 arguments.append([STMD_R, LPTC_R, LPTC_L])

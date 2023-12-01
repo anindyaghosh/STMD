@@ -11,7 +11,7 @@ sns.set_context("paper", font_scale=1.5)
 sns.set_style("ticks")
 sns.set_palette("deep")
 
-stim_type = 'sinusoidal' # cluttered or sinusoidal
+stim_type = 'starfield' # cluttered, sinusoidal or starfield
 
 root = os.getcwd()
 data_folder = os.path.join(root, 'TSDN Data and Scripts-20230908T102728Z-001\TSDN Data and Scripts')
@@ -60,6 +60,16 @@ elif stim_type == 'sinusoidal':
         elif output[i,0] > 159 and output[i,1] == 5 and output[i,2] == 0:
             background_right.append(output[i,:])
         elif output[i,0] > 159 and output[i,1] == 5 and output[i,2] == 180:
+            background_left.append(output[i,:])
+elif stim_type == 'starfield':
+    for i in range(output.shape[0]):
+        if output[i,1] == 0:
+            alone.append(output[i,:])
+        elif output[i,0] == 2 and output[i,1] == 1 and output[i,2] == 0:
+            stationary.append(output[i,:])
+        elif output[i,0] == 2 and output[i,1] == 1 and output[i,2] == 50:
+            background_right.append(output[i,:])
+        elif output[i,0] == 2 and output[i,1] == 1 and output[i,2] == -50:
             background_left.append(output[i,:])
         
 def culling_stims(var):
@@ -236,7 +246,6 @@ total_time = pre_stim + stim_time + post_stim
 
 moving_avgs = moving_average([alone, stationary, background_right, background_left])
 ewma_averages = ewma([alone, stationary, background_right, background_left])
-averages_all = dirac_lpf([alone, stationary, background_right, background_left])
 
 if not os.path.isfile(f'sdfs_{stim_type}.pkl'):
     averages_all = dirac_lpf([alone, stationary, background_right, background_left])
@@ -282,7 +291,7 @@ def moving_average_viz(moving_avgs):
 
 def spike_train_viz(vars, mode='spikes'):
     if mode == 'spikes':
-        fig, axes = plt.subplots(len(vars), figsize=(5, 12), dpi=500, sharex=True)
+        fig, axes = plt.subplots(len(vars), figsize=(10, 24), dpi=500, sharex=True)
         for i, ax in enumerate(axes.flatten()):
             spikes = []
             for v in vars[i]:

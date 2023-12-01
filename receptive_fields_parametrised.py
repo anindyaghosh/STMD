@@ -26,7 +26,7 @@ class receptive_fields:
         if not os.path.isfile('rf_metadata.json'):
             json.dump([self.vf_resolution.tolist(), self.screen_resolution.tolist(), neurons], open('rf_metadata.json', "w"))
         else:
-            md = json.load(open('rf_metadata.json'),)
+            md = json.load(open('rf_metadata.json', "r"))
             vf_resolution, screen_resolution, neurons_check = md
             
             # Compare json dict values to current input
@@ -36,7 +36,7 @@ class receptive_fields:
             
             if self.reset_flag:
                 # Save new parameters to json file
-                json.dump([self.vf_resolution, self.screen_resolution.tolist(), neurons], open('rf_metadata.json', "w"))
+                json.dump([self.vf_resolution.tolist(), self.screen_resolution.tolist(), neurons], open('rf_metadata.json', "w"))
                 
     def calc_pixel_size(self, value: list):
         # Sigma is in degrees
