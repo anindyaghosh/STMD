@@ -9,34 +9,41 @@ import json
 
 from receptive_field_array import RF_array
 
-neurons = {"TSDN" : {"sigma_vals":12.74, "centre":[30, 45]}, 
-           "dSTMD" : {"sigma_vals":3, "centre":[30, 55]}, 
-           "wSTMD" : {"sigma_vals":[16.99, 16.99], "centre":[30, 45]}}
-           # "wSTMD" : {"sigma_vals":[21.23, 16.99], "centre":[0, 55]}}
-
 class receptive_fields:
-    def __init__(self, vf_resolution):
+    def __init__(self, vf_resolution, background):
         self.vf_resolution = vf_resolution
+        self.background = background if background == 'starfield' else 'cs'
         self.screen_resolution = np.array([155 * 2, 138]) # in degrees
         
         self.pixels_per_degree = np.flip(self.vf_resolution) / self.screen_resolution
         
+    def neuron_param_determination(self):
+        if self.background == 'starfield':
+            self.neurons = {"TSDN" : {"sigma_vals":12.74, "centre":[65, 25]}, 
+                            "dSTMD" : {"sigma_vals":3, "centre":[30, 55]}, 
+                            "wSTMD" : {"sigma_vals":[16.99, 16.99], "centre":[65, 25]}}
+        else:
+            self.neurons = {"TSDN" : {"sigma_vals":12.74, "centre":[30, 45]}, 
+                            "dSTMD" : {"sigma_vals":3, "centre":[30, 55]}, 
+                            "wSTMD" : {"sigma_vals":[16.99, 16.99], "centre":[30, 45]}}
+                           # "wSTMD" : {"sigma_vals":[21.23, 16.99], "centre":[0, 55]}}
+        
     def check_integrity(self):
         self.reset_flag = False
-        if not os.path.isfile('rf_metadata.json'):
-            json.dump([self.vf_resolution.tolist(), self.screen_resolution.tolist(), neurons], open('rf_metadata.json', "w"))
+        if not os.path.isfile(f'rf_metadata_{self.background}.json'):
+            json.dump([self.vf_resolution.tolist(), self.screen_resolution.tolist(), self.neurons], open(f'rf_metadata_{self.background}.json', "w"))
         else:
-            md = json.load(open('rf_metadata.json', "r"))
+            md = json.load(open(f'rf_metadata_{self.background}.json', "r"))
             vf_resolution, screen_resolution, neurons_check = md
             
             # Compare json dict values to current input
             self.reset_flag = not (set(vf_resolution) == set(self.vf_resolution) and
                                    set(screen_resolution) == set(self.screen_resolution) and
-                                   neurons_check == neurons)
+                                   neurons_check == self.neurons)
             
             if self.reset_flag:
                 # Save new parameters to json file
-                json.dump([self.vf_resolution.tolist(), self.screen_resolution.tolist(), neurons], open('rf_metadata.json', "w"))
+                json.dump([self.vf_resolution.tolist(), self.screen_resolution.tolist(), self.neurons], open(f'rf_metadata_{self.background}.json', "w"))
                 
     def calc_pixel_size(self, value: list):
         # Sigma is in degrees
@@ -86,7 +93,7 @@ class receptive_fields:
     
         """
         
-        mean, sigma = neurons[neuron]["centre"], neurons[neuron]["sigma_vals"]
+        mean, sigma = self.neurons[neuron]["centre"], self.neurons[neuron]["sigma_vals"]
         
         if isinstance(sigma, (float, int)):
             sigma = [sigma, sigma]
@@ -126,19 +133,20 @@ class receptive_fields:
         return Z
 
     def run(self):
+        self.neuron_param_determination()
         self.check_integrity()
-        if not os.path.isfile('neurons_rf.npz') or self.reset_flag:
+        if not os.path.isfile(f'neurons_rf_{self.background}.npz') or self.reset_flag:
             vf = np.zeros((*self.vf_resolution, 3))
-            for i, neuron in enumerate(neurons.keys()):
+            for i, neuron in enumerate(self.neurons.keys()):
                 vf[...,i] += self.gaussian(neuron, vf)
                 # Clip values to ensure multiplication of response * RF = 0 when stimulus is not close to the centre of the RF.
                 vf[...,i][vf[...,i] <= 0.01] = 0
                 self.rf_imshow(vf[:,int(vf.shape[1] / 2):,i])
             # Take half of receptive field to simulate right eye
             vf = vf[:,int(vf.shape[1] / 2):,:]
-            np.savez('neurons_rf.npz', vf=vf)
+            np.savez(f'neurons_rf_{self.background}.npz', vf=vf)
         else:
-            vf = np.load('neurons_rf.npz')["vf"]
+            vf = np.load(f'neurons_rf_{self.background}.npz')["vf"]
         return vf
     
 # vf = receptive_fields((1440, 2560)).run()

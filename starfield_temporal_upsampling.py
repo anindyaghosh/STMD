@@ -26,6 +26,7 @@ def extractPoints(condition, filename):
     image = cv2.imread(os.path.join('ImageSequences', condition, filename + '.png'))
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
     thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)[1]
+    # thresh = cv2.threshold(gray, 254, 255, cv2.THRESH_BINARY)[1]
     
     kernel = cv2.getStructuringElement(cv2.MORPH_ELLIPSE, (1,1))
     opening = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, kernel, iterations=3)
@@ -38,7 +39,7 @@ def extractPoints(condition, filename):
         area = cv2.contourArea(c)
         ((x, y), r) = cv2.minEnclosingCircle(c)
         info.append((x, y, r, round(image[round(y), round(x)][0])))
-        # cv2.circle(image, (int(x), int(y)), int(r), (36, 255, 12), 2)
+        cv2.circle(image, (int(x), int(y)), int(r), (36, 255, 12), 2)
         
     # cv2.imshow('thresh', thresh)
     # cv2.imshow('opening', opening)
@@ -73,9 +74,6 @@ def naming_convention(i):
 def generate_images(start, t):
     velocities = interpolation(start_image, end_image, upsampling_resolution=1000/165)
     
-    target_start = (1454, 524)
-    target_velocity = 900/1000 * 4
-    
     # Create background
     image = np.ones((1440, 2560, 3)) * 255
     for p, point in enumerate(start):
@@ -92,10 +90,10 @@ def generate_images(start, t):
         cv2.circle(image, (round(x + velocities[p]*(t-pre_stim)), round(y)), round(r), tuple([intensity]*3), -1)
         
     # Add target
-    if t >= int(pre_stim + stim_time/2):
-        target_timestep = t - int(pre_stim + stim_time/2)
-        cv2.circle(image, (round(target_start[0] - target_velocity*(target_timestep+1)), 
-                            target_start[1]), 15, tuple([0]*3), -1)
+    # if t >= int(pre_stim + stim_time/2):
+    #     target_timestep = t - int(pre_stim + stim_time/2)
+    #     cv2.circle(image, (round(target_start[0] - target_velocity*(target_timestep+1)), 
+    #                         target_start[1]), 8, tuple([0]*3), -1)
         
     cv2.imwrite(os.path.join(stim_folder, naming_convention(t+1) + '.bmp'), image)
 

@@ -35,8 +35,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('-st', '--stim_type', type=str)
 parser.add_argument('-bg', '--background', type=str)
 
-# args = parser.parse_args(['-st', 'alone', '-bg', 'cluttered'])
-args = parser.parse_args()
+args = parser.parse_args(['-st', 'background_left', '-bg', 'starfield'])
+# args = parser.parse_args()
 
 save_folder = os.path.join(os.getcwd(), 'Bagheri')
 
@@ -105,7 +105,7 @@ photo_z = {"b" : np.array([0, 0.0001, -0.0011, 0.0052, -0.0170, 0.0439, -0.0574,
 """
 TAU for FDSR and LPF5, z-transforms
 """
-Ts = 0.006 # 0.001
+Ts = 0.001
 LPF5_TAU = 25 * Ts
 LPF_5 = {"b" : np.array([1 / (1+2*LPF5_TAU/Ts), 1 / (1+2*LPF5_TAU/Ts)]), 
          "a" : np.array([1, (1-2*LPF5_TAU/Ts) / (1+2*LPF5_TAU/Ts)])}
@@ -205,11 +205,12 @@ def create_EMD_tests():
                 # downsampled = cv2.imread(image_name).copy()
                 image_sequence.append(downsampled)
         bg_dims = downsampled.copy()
+        target_size_degree = 1.6
         
-        to_be_removed = 80-pre_remaining
+        # to_be_removed = 80-pre_remaining
         
-        image_sequence = image_sequence[to_be_removed:to_be_removed+pre_remaining+stim_frames+post_remaining]
-        [cv2.imwrite(os.path.join(EMD_folder, naming_convention(f+1) + '.bmp'), im) for f, im in enumerate(image_sequence)]
+        # image_sequence = image_sequence[to_be_removed:to_be_removed+pre_remaining+stim_frames+post_remaining]
+        # [cv2.imwrite(os.path.join(EMD_folder, naming_convention(f+1) + '.bmp'), im) for f, im in enumerate(image_sequence)]
         
     # image = image[:res[0],:].copy()
     # image = cv2.imread('sparse_field_uniform.png')
@@ -315,6 +316,20 @@ def create_EMD_tests():
     elif args.background == 'starfield':
         image_array = image_sequence
         
+        target_start = ((1454, 524) * (bg_dims.shape[:-1] / np.array([1440, 2560]))).astype(int)
+        target_velocity = 900/1000
+        target_size = round(target_size_degree * bg_dims.shape[1] / desired_resolution[1] / 2)
+        
+        for t, image in enumerate(image_array):
+            if t >= int(pre_stim + stim_time/2) or t < (pre_stim + stim_time):
+                target_timestep = t - int(pre_stim + stim_time/2)
+                cv2.circle(image, (round(target_start[0] - target_velocity*(target_timestep+1)), 
+                                    target_start[1]), target_size, tuple([0]*3), -1)
+                
+                image_array[t] = image
+                
+            # cv2.imwrite(os.path.join(EMD_folder, naming_convention(t+1) + '.bmp'), image)
+        
         with open(os.path.join(root, 'GroundTruth.txt'), 'w') as f:
             f.write('0,0,0,0')
             f.write('\n')
@@ -325,7 +340,7 @@ def create_EMD_tests():
 if EMD_folder in root:
     pixels_to_keep, image_array = create_EMD_tests()
     pixels_to_keep[1] *= 2
-    vf = rf(pixels_to_keep).run()
+    vf = rf(pixels_to_keep, args.background).run()
 
 # Wiederman (2008)
 def create_botanic_panorama():
@@ -810,6 +825,9 @@ with tqdm(total=len(image_array)) as pbar:
         
         pbar.update(1)
         
+        number = naming_convention(t+1)
+        visualise([image.copy()], folder_name('vid_images'), title=[number], rf=True)
+        
         if t == pre_stim + int(stim_time / 2) and t == (pre_stim + stim_time - 1):
             number = naming_convention(t+1)
             visualise([image.copy()], folder_name('vid_images'), title=[number], rf=True)
@@ -872,7 +890,7 @@ with tqdm(total=len(image_array)) as pbar:
         # LMC output after spatial high pass filtering
         LMC_Out = matlab_style_conv2(PhotoreceptorOut, CSA_KERNEL, mode='same', pad_width=pad_width)
         # LMC.append(LMC_Out[17,50])
-        # visualise([LMC_Out], folder_name('sinusoidal_LMC'), title=[number])
+        # visualise([LMC_Out], folder_name('starfield_LMC'), title=[number])
         
         # Half-wave rectification
         # Clamp the high pass filtered data to separate the on and off channels
@@ -964,8 +982,8 @@ with tqdm(total=len(image_array)) as pbar:
         
         # Half-wave rectification
         if EMD_folder in root:
-            EHR_R = np.maximum(EHR_right, 0.0)#  * Downsampledvf[:,:-1,1]
-            EHR_L = -np.minimum(EHR_right, 0.0)#  * Downsampledvf[:,:-1,1]
+            EHR_R = np.maximum(EHR_right, 0.0) * Downsampledvf[:,:-1,1]
+            EHR_L = -np.minimum(EHR_right, 0.0) * Downsampledvf[:,:-1,1]
             
         if t < len(image_array) - delay:
             number = naming_convention(t+1)

@@ -8,7 +8,8 @@ from scipy import signal
 # import TSDN_data_analysis
 
 stimuli = ['alone', 'stationary', 'background_right', 'background_left']
-background = 'sinusoidal'
+labels = ['alone', 'stationary', 'syn-directional', 'contra-directional']
+background = 'starfield'
 
 def filtering(x):
     b, a = signal.iirfilter(1, Wn=1, fs=165, btype="low")
@@ -79,6 +80,12 @@ def model_H(param, neurons):
 def simulate_shift(var, shift):
     return np.roll(var.copy(), shift)
 
+def swap_output(neurons):
+    stacked = np.stack(neurons)
+    stacked[[0, 1]] = stacked[[1, 0]]
+    
+    return stacked
+
 fig, axes = plt.subplots(5, figsize=(6, 12), dpi=500, sharex=True, sharey=True)
 for j, ax in enumerate(axes):
     err = 0
@@ -87,7 +94,7 @@ for j, ax in enumerate(axes):
         STMD_L = stims[i][neurons.index('STMD_L')].clip(min=0)
         LPTC_R = stims[i][neurons.index('LPTC_R')].clip(min=0)
         LPTC_L = stims[i][neurons.index('LPTC_L')].clip(min=0)
-        LPTC_HR = stims[i][neurons.index('LPTC_HR')]
+        LPTC_HR = stims[i][neurons.index('LPTC_HR')].copy()
         
         # fig, axes = plt.subplots(dpi=500)
         # axes.plot(STMD_R.clip(min=0), label='STMD_R')
@@ -98,6 +105,11 @@ for j, ax in enumerate(axes):
         # plt.legend()
         
         TSDN_ephys = np.mean(np.vstack(sdfs[i]), axis=0)[1:-1]
+        
+        if background == 'starfield':
+            STMD_R, STMD_L = swap_output((STMD_R, STMD_L))
+            LPTC_R, LPTC_L = swap_output((LPTC_R, LPTC_L))
+            LPTC_HR *= -1
         
         shift = np.argmax(TSDN_ephys) - np.argmax(STMD_R)
         TSDN_ephys = simulate_shift(TSDN_ephys, -shift)
@@ -110,7 +122,7 @@ for j, ax in enumerate(axes):
             sim = model_E([22.5, 0.015], [STMD_R, LPTC_HR])
         elif j == 2:
             title = 'F'
-            sim = model_F([9, 0.01, 1.225], [STMD_R, LPTC_R, LPTC_L])
+            sim = model_F([9, 0.05, 1.225], [STMD_R, LPTC_R, LPTC_L])
         elif j == 3:
             title = 'G'
             sim = model_G([24, 1.4, 0.002], [STMD_R, STMD_L, LPTC_R])
@@ -123,7 +135,7 @@ for j, ax in enumerate(axes):
         stimuli[i] = stimuli[i].replace('_', ' ')
             
         axes[j].text(0.05, 0.8, title, horizontalalignment='left', transform=ax.transAxes)
-        axes[j].plot(sim, label=stimuli[i])
+        axes[j].plot(sim, label=labels[i])
     print(title, np.sqrt(err / stims.shape[-1])) # RMSE
 axes[-1].set_xlabel('Time [ms]')
 axes[-1].set_ylabel('Activation [a.u.]')
@@ -137,7 +149,7 @@ for i, ax in enumerate(axes):
     STMD_L = stims[i][neurons.index('STMD_L')].clip(min=0)
     LPTC_R = stims[i][neurons.index('LPTC_R')].clip(min=0)
     LPTC_L = stims[i][neurons.index('LPTC_L')].clip(min=0)
-    LPTC_HR = stims[i][neurons.index('LPTC_HR')]
+    LPTC_HR = stims[i][neurons.index('LPTC_HR')].copy()
     
     # fig, axes = plt.subplots(dpi=500)
     # axes.plot(STMD_R.clip(min=0), label='STMD_R')
@@ -149,18 +161,23 @@ for i, ax in enumerate(axes):
     
     TSDN_ephys = np.mean(np.vstack(sdfs[i]), axis=0)[1:-1]
     
+    if background == 'starfield':
+        STMD_R, STMD_L = swap_output((STMD_R, STMD_L))
+        LPTC_R, LPTC_L = swap_output((LPTC_R, LPTC_L))
+        LPTC_HR *= -1
+    
     shift = np.argmax(TSDN_ephys) - np.argmax(STMD_R)
     TSDN_ephys = simulate_shift(TSDN_ephys, -shift)
     
     ax.plot(model_D([51, 1.03, 0.39], [STMD_R, LPTC_R, LPTC_L]), label='D')
     ax.plot(model_E([22.5, 0.015], [STMD_R, LPTC_HR]), label='E')
-    ax.plot(model_F([9, 0.01, 1.225], [STMD_R, LPTC_R, LPTC_L]), label='F')
+    ax.plot(model_F([9, 0.05, 1.225], [STMD_R, LPTC_R, LPTC_L]), label='F')
     ax.plot(model_G([24, 1.4, 0.002], [STMD_R, STMD_L, LPTC_R]), label='G')
     ax.plot(model_H([24.52, 0.026, 0.017], [STMD_R, LPTC_R, LPTC_L]), label='H')
         
     stimuli[i] = stimuli[i].replace('_', ' ')
         
-    ax.text(0.05, 0.8, stimuli[i], horizontalalignment='left', transform=ax.transAxes)
+    ax.text(0.05, 0.8, labels[i], horizontalalignment='left', transform=ax.transAxes)
     ax.plot(TSDN_ephys, label='TSDN ephys')
 axes[-1].set_xlabel('Time [ms]')
 axes[-1].set_ylabel('Activation [a.u.]')

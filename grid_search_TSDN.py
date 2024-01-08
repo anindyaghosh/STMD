@@ -13,8 +13,8 @@ parser = argparse.ArgumentParser()
 parser.add_argument('--model_type', type=str)
 parser.add_argument('--stimulus_type', type=str)
 
-args = parser.parse_args(['--model_type', 'E', '--stimulus_type', 'starfield'])
-# args = parser.parse_args()
+# args = parser.parse_args(['--model_type', 'E', '--stimulus_type', 'starfield'])
+args = parser.parse_args()
 
 stimuli = ['alone', 'stationary', 'background_right', 'background_left']
 
@@ -89,6 +89,12 @@ def model_H(param, neurons):
 def simulate_shift(var, shift):
     return np.roll(var.copy(), shift)
 
+def swap_output(neurons):
+    stacked = np.stack(neurons)
+    stacked[[0, 1]] = stacked[[1, 0]]
+    
+    return stacked
+
 def model(params):
     err = 0
     for i in range(len(stimuli)):
@@ -96,7 +102,7 @@ def model(params):
         STMD_L = stims[i][neurons.index('STMD_L')].clip(min=0)
         LPTC_R = stims[i][neurons.index('LPTC_R')].clip(min=0)
         LPTC_L = stims[i][neurons.index('LPTC_L')].clip(min=0)
-        LPTC_HR = stims[i][neurons.index('LPTC_HR')]
+        LPTC_HR = stims[i][neurons.index('LPTC_HR')].clip(min=0)
         
         # fig, axes = plt.subplots(dpi=500)
         # axes.plot(STMD_R.clip(min=0), label='STMD_R')
@@ -107,6 +113,10 @@ def model(params):
         # plt.legend()
         
         TSDN_ephys = np.mean(np.vstack(sdfs[i]), axis=0)[1:-1]
+        
+        if args.stimulus_type == 'starfield':
+            STMD_R, STMD_L = swap_output((STMD_R, STMD_L))
+            LPTC_R, LPTC_L = swap_output((LPTC_R, LPTC_L))
         
         shift = np.argmax(TSDN_ephys) - np.argmax(STMD_R)
         TSDN_ephys = simulate_shift(TSDN_ephys, -shift)
@@ -151,9 +161,9 @@ def model(params):
 
 if args.model_type == 'D':
     arguments = []
-    for STMD_R in np.arange(2000, 8000, 50):
-        for LPTC_R in np.arange(5, 50, 1):
-            for LPTC_L in np.arange(0, 250, 1):
+    for STMD_R in np.arange(0, 60, 1):
+        for LPTC_R in np.arange(0, 5, 0.1):
+            for LPTC_L in np.arange(0, 1, 0.1):
                 # for shift in np.arange(0, 1000, 25):
                 #     for LPTC_shift in np.arange(0, 1000, 25):
                 arguments.append([STMD_R, LPTC_R, LPTC_L])
@@ -204,4 +214,4 @@ save_dir = os.path.join(os.getcwd(), 'grid_search_saves')
 os.makedirs(save_dir, exist_ok=True)
 
 df = pd.DataFrame(model_output)
-df.to_csv(os.path.join(save_dir, f'{args.model_type}.csv'))
+df.to_csv(os.path.join(save_dir, f'{args.model_type}_{args.stimulus_type}.csv'))
